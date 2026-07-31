@@ -227,12 +227,15 @@ any deviation is a named FAIL — degenerate inputs can never pass by absence.
   plus `compliance-verdict.json` next to the native `aggregate-result.json`.
 
 **Exit codes (the automation contract — arm-scoped: one invocation scores
-one model arm)**: `0` = this arm passed in full (`arm_flip_qualifying:
-true` in the verdict) — one arm's half of the flip bar, which needs BOTH
-arms (see "The flip-qualifying bar" below); a single exit-0 run is never
-the full bar. `2` = every gate passed but the run was `CASE_GLOB`-partial
-— completed, NOT arm-qualifying; CI treats any non-zero as red, so a
-partial run can never show green. `1` = anything else failed.
+one model arm)**: `0` = this run passed every gate. `arm_flip_qualifying`
+in the verdict is stricter than exit 0: it additionally requires
+production slug mode on a registered arm (`cli-default` or `MODEL=opus`)
+— a passing local-mode or other-arm run exits 0 but records NOT
+arm-qualifying (see "The flip-qualifying bar" below); a single exit-0 run
+is never the full bar. `2` = every gate passed but the run was
+`CASE_GLOB`-partial — completed, NOT arm-qualifying; CI treats any
+non-zero as red, so a partial run can never show green. `1` = anything
+else failed.
 
 **These properties are pinned by committed fixtures** —
 `tests/fixtures/postprocess/` + `tests/test_postprocess.py` (the
@@ -301,7 +304,8 @@ From a checkout of THIS repo (`mysecond-ai/pm-os-evals`):
 
 ```bash
 scripts/eval/run-install-compliance.sh                 # default: production slug mode
-MODEL=sonnet scripts/eval/run-install-compliance.sh    # second model arm
+MODEL=opus scripts/eval/run-install-compliance.sh      # high-reasoning arm
+MODEL=sonnet scripts/eval/run-install-compliance.sh    # sonnet arm (scored per the pre-registered criteria; not arm-qualifying)
 MARKETPLACE_SOURCE=/path/to/pm-os-checkout \
   scripts/eval/run-install-compliance.sh               # local (hermetic) mode
 ```
@@ -405,4 +409,5 @@ maintainer running a trusted ref). No credential is stored in this repo.
 The CLI version CI installs is pinned to the version the harness was
 verified on — bump it deliberately, per the upgrade note in the workflow.
 Scoring runs that count are Ron's local invocations — CI dispatch is a
-rehearsal lane for the default arm.
+rehearsal lane (one arm per dispatch via the `model` input; no dispatch
+outcome is arm-qualifying on its own).
