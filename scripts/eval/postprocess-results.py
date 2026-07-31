@@ -116,6 +116,18 @@ What it enforces:
    item 3). Every case mean >= --threshold (default 0.85). Clean run =
    adjusted >= 0.99; clean x/n per case is the reported prior-art shape.
 
+6. VOTE PERSISTENCE: compliance-verdict.json carries, per case, a
+   run_details list — one record per run with its adjusted score,
+   validity/refusal flags, and every grader's persisted judgment fields
+   (passed, judge_votes, explanation) copied from the aggregate. This is
+   the fullest per-vote record the eval tool exposes: `claude plugin eval`
+   judges are single-token voters (the judge prompt ends "Respond with
+   exactly one word: PASS or FAIL" — verified against CLI 2.1.220), so
+   rationale TEXT per vote does not exist to persist; the votes, the
+   grader's evidence excerpt (in aggregate-result.json), the full run
+   record (full-result.json, written by the runner), and kept traces on
+   failure are the calibration record.
+
 EXIT CODES (automation contract):
   0 = full pass, flip-qualifying
   2 = every gate passed but the run was CASE_GLOB-partial — completed, NOT
@@ -490,6 +502,7 @@ def main():
             if expected_n is not None and n != expected_n:
                 failures.append(f"{cname}: expected {expected_n} run(s), found {n}")
             adjusted_scores = []
+            run_records = []
             clean = refusals = errors = 0
 
             for i, run in enumerate(runs, start=1):
@@ -635,6 +648,27 @@ def main():
                 if run_valid and not run_refused and adjusted >= CLEAN_BAR:
                     clean += 1
 
+                # Vote persistence (docstring item 6): copy each grader's
+                # persisted judgment fields verbatim so a calibration
+                # question is a file read, not trace archaeology. Duplicate
+                # grader names collapse here — that run already FAILed the
+                # grader-shape check above.
+                run_records.append({
+                    "run": i,
+                    "adjusted": round(adjusted, 4),
+                    "valid": run_valid,
+                    "refused": run_refused,
+                    "graders": {
+                        g["name"]: {
+                            k: g.get(k)
+                            for k in ("passed", "judge_votes", "explanation")
+                            if k in g
+                        }
+                        for g in graders
+                        if isinstance(g, dict) and isinstance(g.get("name"), str)
+                    },
+                })
+
             mean = (sum(adjusted_scores) / len(adjusted_scores)
                     if adjusted_scores else 0.0)
             if mean < args.threshold:
@@ -648,6 +682,7 @@ def main():
                 "errors": errors,
                 "adjusted_mean": round(mean, 4),
                 "adjusted_scores": [round(s, 4) for s in adjusted_scores],
+                "run_details": run_records,
             })
 
         passed = not failures
