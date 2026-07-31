@@ -131,8 +131,11 @@ What it enforces:
 EXIT CODES (automation contract — ARM-SCOPED: one invocation scores one
 model arm; the flip bar itself needs BOTH arms green, default and
 high-reasoning — see the suite README, "The flip-qualifying bar"):
-  0 = this arm passed every gate, un-filtered (arm_flip_qualifying: true
-      in the verdict — one arm's half of the flip bar, never the full bar)
+  0 = this run passed every gate, un-filtered. arm_flip_qualifying in the
+      verdict is stricter than exit 0: it also requires production slug
+      mode on a registered arm (PROD_SLUG / REGISTERED_ARMS below) — a
+      passing local-mode or other-arm run exits 0 but records NOT
+      arm-qualifying; one arm's half of the flip bar, never the full bar
   2 = every gate passed but the run was CASE_GLOB-partial — completed, NOT
       arm-qualifying (CI must treat any non-zero as red)
   1 = anything else failed
