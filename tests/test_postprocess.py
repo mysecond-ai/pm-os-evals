@@ -79,9 +79,10 @@ Scenarios (why each exists — review rounds 2-3, pm-os#1; rubric v3 2026-07-31)
                   names both possibilities and directs a human to the
                   kept trace. Documented behavior, not an accident.
 
-Exit-code contract asserted per scenario: 0 = flip-qualifying pass,
+Exit-code contract asserted per scenario: 0 = arm-scoped pass (one arm's
+half of the flip bar — the flip bar itself needs both model arms),
 2 = passed-but-partial, 1 = failed. Verdict JSON coherence is asserted
-against the same contract (passed / flip_qualifying / exit_code fields).
+against the same contract (passed / arm_flip_qualifying / exit_code fields).
 
 Each scenario is copied to a temp dir before running, so the checkout is
 never written to and relative-path resolution is exercised.
@@ -166,14 +167,15 @@ def run_scenario(src):
         else:
             verdict = json.loads(verdict_path.read_text(encoding="utf-8"))
             want_passed = expected["exit"] in (0, 2)
-            want_flip = expected["exit"] == 0
+            want_arm = expected["exit"] == 0
             if verdict.get("passed") is not want_passed:
                 problems.append(
                     f"verdict passed={verdict.get('passed')} disagrees with "
                     f"expected exit {expected['exit']}")
-            if verdict.get("flip_qualifying") is not want_flip:
+            if verdict.get("arm_flip_qualifying") is not want_arm:
                 problems.append(
-                    f"verdict flip_qualifying={verdict.get('flip_qualifying')} "
+                    f"verdict arm_flip_qualifying="
+                    f"{verdict.get('arm_flip_qualifying')} "
                     f"disagrees with expected exit {expected['exit']}")
             if verdict.get("exit_code") != expected["exit"]:
                 problems.append(

@@ -51,9 +51,11 @@
 # (b) machine-enforces the hard gates: ANY run failing the binary
 # `no_refusal` grader, ANY errored run, or ANY case adjusted-mean below
 # THRESHOLD fails the harness. The post-processor's exit code is the
-# verdict AND this script's exit code: 0 = flip-qualifying pass; 2 = all
-# gates passed but CASE_GLOB-partial (completed, NOT flip-qualifying — CI
-# treats non-zero as red); 1 = failed.
+# verdict AND this script's exit code — ARM-SCOPED (one invocation scores
+# one model arm): 0 = this arm passed every gate (arm_flip_qualifying in
+# the verdict; the flip bar itself needs BOTH arms green — see the README);
+# 2 = all gates passed but CASE_GLOB-partial (completed, NOT
+# arm-qualifying — CI treats non-zero as red); 1 = failed.
 #
 # Persistence (the fullest the eval tool supports): every run writes, next
 # to the native aggregate-result.json, (1) full-result.json — the eval
@@ -83,9 +85,13 @@
 # ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN (dispatch-only; see workflow).
 #
 # NOTE: `claude plugin eval` is early-access, gated behind
-# CLAUDE_CODE_WALNUT_SPIRE=1 (set below; verified on 2.1.207-2.1.220). When
-# the command GAs, drop the var. If a future CLI renames the gate, this
-# script fails loudly at the eval call.
+# CLAUDE_CODE_WALNUT_SPIRE=1 (set below; the gate env NAME is verified on
+# 2.1.207-2.1.220). This runner as a whole requires CLI 2.1.220+: the
+# `--json <path>` persistence flag it passes is parsed by 2.1.207 as a
+# boolean flag plus a positional case target (verified against both
+# binaries) — only 2.1.220 accepts the path form. When the command GAs,
+# drop the var. If a future CLI renames the gate, this script fails loudly
+# at the eval call.
 
 set -euo pipefail
 
@@ -132,9 +138,11 @@ rm -rf "$WORK/evals/results"
 # --- De-contaminated marketplace staging (adopted 2026-07-29; extended
 # 2026-07-31): agents under eval READ the marketplace source. In LOCAL mode
 # the runner therefore stages a copy of the plugin checkout WITHOUT .git,
-# .memory, or any evals/, tests/, scripts/eval leftovers (current pm-os
-# refs no longer carry those directories — the strip is belt-and-braces for
-# older refs; the staged scripts/eval leak specifically was cited in 11 of
+# .memory, or any evals/, tests/, scripts/eval directories (pm-os PR #4
+# removes those from the plugin repo; until it merges, current pm-os refs
+# STILL carry them, so the strip is load-bearing here — and slug mode,
+# which stages nothing, exposes them until that merge; the staged
+# scripts/eval leak specifically was cited in 11 of
 # 19 failing runs of the 2026-07-29 local scoring). The copy lives in its
 # OWN temp root, SEPARATE from $WORK: if the marketplace lived next to the
 # staged eval suite, an inspecting agent walking dirname(marketplace) would

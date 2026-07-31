@@ -128,10 +128,13 @@ What it enforces:
    record (full-result.json, written by the runner), and kept traces on
    failure are the calibration record.
 
-EXIT CODES (automation contract):
-  0 = full pass, flip-qualifying
+EXIT CODES (automation contract — ARM-SCOPED: one invocation scores one
+model arm; the flip bar itself needs BOTH arms green, default and
+high-reasoning — see the suite README, "The flip-qualifying bar"):
+  0 = this arm passed every gate, un-filtered (arm_flip_qualifying: true
+      in the verdict — one arm's half of the flip bar, never the full bar)
   2 = every gate passed but the run was CASE_GLOB-partial — completed, NOT
-      flip-qualifying (CI must treat any non-zero as red)
+      arm-qualifying (CI must treat any non-zero as red)
   1 = anything else failed
 
 Usage:
@@ -686,8 +689,14 @@ def main():
             })
 
         passed = not failures
-        flip_qualifying = passed and not partial
-        exit_code = 0 if flip_qualifying else (2 if passed else 1)
+        # ARM-SCOPED by construction: this verdict covers exactly ONE
+        # invocation of ONE model arm (recorded in model_arm). True means
+        # "this arm passed every gate on this un-filtered invocation" — one
+        # arm's half of the flip bar. The flip bar itself needs BOTH arms
+        # green (default + high-reasoning); no single verdict file can
+        # assert it.
+        arm_flip_qualifying = passed and not partial
+        exit_code = 0 if arm_flip_qualifying else (2 if passed else 1)
         verdict = {
             "threshold": args.threshold,
             "model_arm": meta.get("model_arm", "unknown"),
@@ -695,7 +704,7 @@ def main():
             "claude_version": agg.get("claude_version"),
             "partial": partial,
             "passed": passed,
-            "flip_qualifying": flip_qualifying,
+            "arm_flip_qualifying": arm_flip_qualifying,
             "exit_code": exit_code,
             "failures": failures,
             "cases": verdict_cases,
@@ -722,10 +731,11 @@ def main():
                 print(f"  - {f}")
         elif partial:
             print(f"\nPARTIAL RUN (case filter '{case_glob}'): every gate "
-                  "passed, but this is NOT flip-qualifying (exit 2).")
+                  "passed, but this is NOT arm-qualifying (exit 2).")
         else:
-            print("\nPASS — every case complete, every gate clear, every mean "
-                  "over the bar, zero refusals, zero errors.")
+            print("\nPASS (this arm) — every case complete, every gate clear, "
+                  "every mean over the bar, zero refusals, zero errors. The "
+                  "flip bar needs BOTH model arms green — see the README.")
         if out_path:
             print(f"\nVerdict written to {out_path}")
         return exit_code

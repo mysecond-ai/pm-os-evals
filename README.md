@@ -20,7 +20,7 @@ The plugin repo stays clean; the transparency stays here, one link away.
 | `evals/install-compliance/paste.canonical.txt` | The single canonical production paste — CI pins every case against it |
 | `scripts/eval/run-install-compliance.sh` | The one-command runner |
 | `scripts/eval/postprocess-results.py` | Fail-closed verifier: completeness, pinned-grammar install credit, forged-evidence gates, hard gates, threshold |
-| `tests/` | 22 CI-enforced checks: 21 fail-closed fixture scenarios + the tracked-file raw-byte scan, plus the paste-pin check |
+| `tests/` | 23 CI-enforced checks: 21 fail-closed fixture scenarios + the tracked-file raw-byte scan + the paste-pin check |
 
 ## Running
 
@@ -36,7 +36,10 @@ MARKETPLACE_SOURCE=/path/to/pm-os-checkout \
   scripts/eval/run-install-compliance.sh               # hermetic local mode (plumbing checks only)
 ```
 
-Exit code contract: `0` = flip-qualifying pass, `2` = all gates passed but
+Exit code contract (arm-scoped — one invocation scores one model arm):
+`0` = this arm passed every gate (`arm_flip_qualifying: true` in the
+verdict; the flip bar itself needs BOTH arms green, default and
+high-reasoning — see the suite README), `2` = all gates passed but
 the run was case-filtered (partial), `1` = failed. Each run writes
 `evals/results/<timestamp>/` with `aggregate-result.json` (native scores +
 per-grader judge votes + evidence excerpts), `full-result.json` (the eval

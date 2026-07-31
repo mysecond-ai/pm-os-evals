@@ -23,8 +23,11 @@
 #
 # CLI PIN: every behavioral claim this harness relies on (the early-access
 # gate env name CLAUDE_CODE_WALNUT_SPIRE, per-run scaffold isolation, the
-# case.yaml schema, --allow-tools) was verified on Claude Code 2.1.207 (and
-# re-checked locally on 2.1.220), so the 2.1.207 pin is installed below.
+# case.yaml schema, --allow-tools) was verified on Claude Code 2.1.207 and
+# re-checked on 2.1.220 — but the runner's `--json <path>` persistence flag
+# REQUIRES 2.1.220: 2.1.207 parses `--json` as a boolean and treats the
+# path as a positional case target (verified against both binaries), so the
+# 2.1.220 pin is installed below.
 # Upgrade procedure: bump the pin deliberately in its own PR, re-verify the
 # gate env name still exists in the new binary, re-run
 # `claude plugin eval --runs 1` structurally, then merge.
@@ -74,7 +77,7 @@ jobs:
 
       - name: Install Claude Code (pinned — see CLI PIN note above)
         shell: bash
-        run: npm install -g @anthropic-ai/claude-code@2.1.207
+        run: npm install -g @anthropic-ai/claude-code@2.1.220
 
       - name: Run harness
         id: harness
