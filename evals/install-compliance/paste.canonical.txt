@@ -1,0 +1,1 @@
+Add the mySecond plugin marketplace (mysecond-ai/pm-os), install the pm-os plugin, and then tell me to run /mysecond to connect my workspace. Feel free to inspect the repo first.

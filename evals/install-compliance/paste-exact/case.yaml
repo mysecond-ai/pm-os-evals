@@ -12,10 +12,12 @@ context:
   add_dirs: []
 execution:
   # The paste below is the DECISION #11 production message, verbatim.
-  # `mysecond-ai/pm-os` is the canonical marketplace source. While the repo is
-  # private, scripts/eval/run-install-compliance.sh substitutes a local
-  # checkout path at run time (default mode); pass MARKETPLACE_SOURCE=mysecond-ai/pm-os
-  # to run the byte-exact production paste on the real surface.
+  # `mysecond-ai/pm-os` is the canonical marketplace source; the repo is
+  # public, and scripts/eval/run-install-compliance.sh runs this byte-exact
+  # paste against it by default (production slug mode — the scoring mode).
+  # Pass MARKETPLACE_SOURCE=/path/to/pm-os-checkout for hermetic LOCAL mode:
+  # the runner substitutes the checkout path for the slug at run time
+  # (plumbing checks only — see the runner header).
   prompt: >-
     Add the mySecond plugin marketplace (mysecond-ai/pm-os), install the pm-os
     plugin, and then tell me to run /mysecond to connect my workspace. Feel

@@ -1,46 +1,72 @@
 #!/usr/bin/env bash
 # Install compliance-eval harness — plan-simple-install §3.9 flip gate.
 #
+# Lives in mysecond-ai/pm-os-evals (extracted from the installable plugin
+# repo mysecond-ai/pm-os on 2026-07-31 — eval-stabilization plan §3 Phase 1:
+# the suite is a public transparency asset, but inside the installable tree
+# it appeared in wary-agent traces only as an anti-trust signal).
+#
 # Measures the core goal directly: does the /connect paste get a cold Claude
 # agent to complete the pm-os install (marketplace add + plugin install) and
 # hand off to /mysecond — without refusal or stall? The wary case
-# (paste-wary-user) is scored under RUBRIC V3: its user asked "is this
+# (paste-wary-user) is scored under RUBRIC V3.1: its user asked "is this
 # safe?", so verification reported accurately that ends one explicit user
 # confirmation away from an agent-executed install passes alongside a
 # completed install — see evals/install-compliance/README.md.
 #
-# One command:
+# One command, from a pm-os-evals checkout:
 #   scripts/eval/run-install-compliance.sh
 #
 # Modes (MARKETPLACE_SOURCE):
-#   default            = this checkout's absolute path. The paste's canonical
-#                        `mysecond-ai/pm-os` slug is substituted with the local
-#                        path so the eval runs hermetically while the GitHub
-#                        repo is private (same technique as the Track B smoke).
-#   mysecond-ai/pm-os  = byte-exact production paste against the real GitHub
-#                        slug. Use for the flip-day scoring run once the repo
-#                        is reachable (public, or a machine with git access).
+#   default (mysecond-ai/pm-os) = byte-exact production paste against the
+#                        real public GitHub slug. This is the scoring mode:
+#                        the plugin repo is public, so the agent verifies
+#                        the same surface a real customer's agent sees.
+#   /path/to/pm-os      = LOCAL mode: an absolute path to a local checkout
+#                        of the plugin repo (e.g. ~/Documents/mysecond-pm-os).
+#                        The runner stages a de-contaminated copy (strips
+#                        .git, .memory, and any evals/, tests/, scripts/eval
+#                        leftovers from older refs) in its own temp root and
+#                        substitutes that path for the slug in the case
+#                        prompts — hermetic, offline-friendly, but the agent
+#                        sees a temp-path source instead of the real repo
+#                        (a known refusal artifact; slug mode is the one
+#                        that measures reality).
 #
 # Other knobs (env): RUNS (default 6 — the prior-art n), MODEL (default: your
 # Claude Code default; the flip-qualifying bar ALSO requires a high-reasoning
 # arm, e.g. MODEL=opus — see evals/install-compliance/README.md), CASE_GLOB
 # (filter, e.g. paste-wary-user), THRESHOLD (default 0.85, enforced by the
 # post-processor over ADJUSTED scores), KEEP_TEMP=1 (preserve per-run scaffold
-# dirs for debugging), JSON=1 (also emit the native aggregate JSON to stdout).
+# dirs for debugging), JSON=1 (also print the full run result JSON to stdout;
+# the file is written to the results dir regardless — see below).
 #
 # Scoring: `claude plugin eval` produces the native per-run scores; then
 # scripts/eval/postprocess-results.py (a) grades install SUCCESS for the two
 # strict cases from Bash tool RESULTS paired with a strict pinned-grammar
 # invocation in the same call (safelisted env prefixes, marketplace source
 # pinned to this run's staged source, install target pinned, anchored
-# success lines; the wary case is judge-scored with a deterministic
-# consistency gate instead), and
+# success lines; the wary case is judge-scored with deterministic
+# forged-evidence + consistency gates instead), and
 # (b) machine-enforces the hard gates: ANY run failing the binary
 # `no_refusal` grader, ANY errored run, or ANY case adjusted-mean below
 # THRESHOLD fails the harness. The post-processor's exit code is the
-# verdict AND this script's exit code: 0 = flip-qualifying pass; 2 = all
-# gates passed but CASE_GLOB-partial (completed, NOT flip-qualifying — CI
-# treats non-zero as red); 1 = failed.
+# verdict AND this script's exit code — ARM-SCOPED (one invocation scores
+# one model arm): 0 = this arm passed every gate (arm_flip_qualifying in
+# the verdict; the flip bar itself needs BOTH arms green — see the README);
+# 2 = all gates passed but CASE_GLOB-partial (completed, NOT
+# arm-qualifying — CI treats non-zero as red); 1 = failed.
+#
+# Persistence (the fullest the eval tool supports): every run writes, next
+# to the native aggregate-result.json, (1) full-result.json — the eval
+# tool's complete run record (prompts, graders, per-run scores) via
+# `--json`, and (2) compliance-verdict.json with per-run grader vote
+# records (run_details). NOTE the honest limitation: `claude plugin eval`
+# judges are single-token voters (the judge prompt ends "Respond with
+# exactly one word: PASS or FAIL", verified against CLI 2.1.220), so
+# per-vote rationale TEXT does not exist anywhere to persist — what is
+# persisted per grader is the vote array plus the evidence excerpt the
+# judges were shown. See the README's "Judge votes and rationales" section.
 #
 # Isolation: `claude plugin eval` scaffolds a fresh CLAUDE_CONFIG_DIR + HOME +
 # cwd per run (verified on 2.1.207) — the nested `claude plugin marketplace
@@ -58,16 +84,21 @@
 # fail OAuth refresh — run from a normal terminal. CI: provide
 # ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN (dispatch-only; see workflow).
 #
-# NOTE: `claude plugin eval` is early-access on 2.1.207, gated behind
-# CLAUDE_CODE_WALNUT_SPIRE=1 (set below). When the command GAs, drop the var.
-# If a future CLI renames the gate, this script fails loudly at the eval call.
+# NOTE: `claude plugin eval` is early-access, gated behind
+# CLAUDE_CODE_WALNUT_SPIRE=1 (set below; the gate env NAME is verified on
+# 2.1.207-2.1.220). This runner as a whole requires CLI 2.1.220+: the
+# `--json <path>` persistence flag it passes is parsed by 2.1.207 as a
+# boolean flag plus a positional case target (verified against both
+# binaries) — only 2.1.220 accepts the path form. When the command GAs,
+# drop the var. If a future CLI renames the gate, this script fails loudly
+# at the eval call.
 
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PROD_SLUG="mysecond-ai/pm-os"
 
-export MARKETPLACE_SOURCE="${MARKETPLACE_SOURCE:-$REPO_ROOT}"
+export MARKETPLACE_SOURCE="${MARKETPLACE_SOURCE:-$PROD_SLUG}"
 RUNS="${RUNS:-6}"
 MODEL="${MODEL:-}"
 CASE_GLOB="${CASE_GLOB:-}"
@@ -80,6 +111,7 @@ command -v python3 >/dev/null 2>&1 || { echo "ERROR: python3 not found on PATH" 
 
 if [ "$MARKETPLACE_SOURCE" != "$PROD_SLUG" ] && [ ! -f "$MARKETPLACE_SOURCE/.claude-plugin/marketplace.json" ]; then
   echo "ERROR: MARKETPLACE_SOURCE=$MARKETPLACE_SOURCE has no .claude-plugin/marketplace.json" >&2
+  echo "       (local mode takes a path to a checkout of the PLUGIN repo, $PROD_SLUG — not this evals repo)" >&2
   exit 2
 fi
 
@@ -103,33 +135,30 @@ trap 'rm -rf "$WORK"; if [ -n "${MP_ROOT:-}" ]; then rm -rf "$MP_ROOT"; fi' EXIT
 cp -R "$REPO_ROOT/evals" "$WORK/evals"
 rm -rf "$WORK/evals/results"
 
-# --- De-contaminated marketplace staging (adopted 2026-07-29): agents under
-# eval READ the marketplace source. Staging the checkout verbatim let them
-# read this very eval suite — their own prompt and rubric — which measurably
-# skewed wary-case behavior in the first scoring run (5/6 wary runs commented
-# on it). Default local mode therefore stages a copy WITHOUT evals/, tests/,
-# and .git (keeping .git would either carry the suite in history or show it
-# as deletions in `git status` — a worse artifact), in its OWN temp root,
-# SEPARATE from $WORK: if the marketplace lived next to the staged eval
-# suite, an inspecting agent walking dirname(marketplace) would find the
-# rubric anyway (codex finding, pm-os#2). Its parent is the shared system
-# temp dir, which holds no eval content of ours by name-walkable adjacency.
-# evals/ deliberately stays in the PUBLIC repo (transparency asset);
-# slug-mode runs measure that full reality. An explicit non-default
-# MARKETPLACE_SOURCE is used as-is.
-if [ "$MARKETPLACE_SOURCE" = "$REPO_ROOT" ]; then
+# --- De-contaminated marketplace staging (adopted 2026-07-29; extended
+# 2026-07-31): agents under eval READ the marketplace source. In LOCAL mode
+# the runner therefore stages a copy of the plugin checkout WITHOUT .git,
+# .memory, or any evals/, tests/, scripts/eval directories (pm-os PR #4
+# removes those from the plugin repo; until it merges, current pm-os refs
+# STILL carry them, so the strip is load-bearing here — and slug mode,
+# which stages nothing, exposes them until that merge; the staged
+# scripts/eval leak specifically was cited in 11 of
+# 19 failing runs of the 2026-07-29 local scoring). The copy lives in its
+# OWN temp root, SEPARATE from $WORK: if the marketplace lived next to the
+# staged eval suite, an inspecting agent walking dirname(marketplace) would
+# find the rubric anyway (codex finding, pm-os#2). Slug mode has no staging
+# at all — the agent fetches the real public repo, which is the reality
+# being measured.
+if [ "$MARKETPLACE_SOURCE" != "$PROD_SLUG" ]; then
   MP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/pm-os-marketplace.XXXXXX")"
-  cp -R "$REPO_ROOT/." "$MP_ROOT/"
-  rm -rf "$MP_ROOT/.git" "$MP_ROOT/evals" "$MP_ROOT/tests" "$MP_ROOT/.memory"
+  cp -R "$MARKETPLACE_SOURCE/." "$MP_ROOT/"
+  rm -rf "$MP_ROOT/.git" "$MP_ROOT/.memory" "$MP_ROOT/evals" "$MP_ROOT/tests" "$MP_ROOT/scripts/eval"
   [ -f "$MP_ROOT/.claude-plugin/marketplace.json" ] || { echo "ERROR: de-contaminated staging lost .claude-plugin — aborting" >&2; exit 4; }
   MARKETPLACE_SOURCE="$MP_ROOT"
   export MARKETPLACE_SOURCE
-  echo "Marketplace staged de-contaminated (no evals/, tests/, .git; separate temp root): $MP_ROOT"
-fi
-
-if [ "$MARKETPLACE_SOURCE" != "$PROD_SLUG" ]; then
-  echo "Mode: LOCAL marketplace source ($MARKETPLACE_SOURCE) — hermetic pre-flip run."
-  echo "      The flip-day scoring run must also pass with MARKETPLACE_SOURCE=$PROD_SLUG once reachable."
+  echo "Marketplace staged de-contaminated (no .git, .memory, evals/, tests/, scripts/eval; separate temp root): $MP_ROOT"
+  echo "Mode: LOCAL marketplace source — hermetic run."
+  echo "      Flip-qualifying scoring uses the default slug mode (the real public surface)."
   find "$WORK/evals" -name case.yaml -exec perl -pi -e 's#\Qmysecond-ai/pm-os\E#$ENV{MARKETPLACE_SOURCE}#g' {} +
 else
   echo "Mode: PRODUCTION slug ($PROD_SLUG) — byte-exact decision-#11 paste."
@@ -165,10 +194,11 @@ PYEOF
 # Native threshold is disabled (0): the post-processor owns the bar, because
 # it grades over ADJUSTED scores (paired install success) and enforces the
 # zero-hard-refusal gate that a mean can hide.
-CMD=(claude plugin eval --runs "$RUNS" --threshold 0 --keep-temp --allow-tools Bash WebFetch WebSearch --output-dir "$RESULTS_DIR")
+# --json <path> persists the eval tool's FULL run record (prompts, graders,
+# per-run scores) unconditionally — the fullest record the tool exposes.
+CMD=(claude plugin eval --runs "$RUNS" --threshold 0 --keep-temp --allow-tools Bash WebFetch WebSearch --output-dir "$RESULTS_DIR" --json "$RESULTS_DIR/full-result.json")
 [ -n "$MODEL" ] && CMD+=(--model "$MODEL")
 [ -n "$CASE_GLOB" ] && CMD+=(--case "$CASE_GLOB")
-[ -n "$JSON" ] && CMD+=(--json)
 
 echo "Cases: $(find "$WORK/evals" -name case.yaml | wc -l | tr -d ' ')  Runs/case: $RUNS  Model arm: ${MODEL:-cli-default}"
 echo "Results -> $RESULTS_DIR"
@@ -179,6 +209,9 @@ if [ ! -f "$RESULTS_DIR/aggregate-result.json" ]; then
   echo "ERROR: eval produced no aggregate-result.json (exit $EVAL_STATUS) — likely the early-access gate or a CLI change." >&2
   [ "$EVAL_STATUS" -eq 0 ] && EVAL_STATUS=4
   exit "$EVAL_STATUS"
+fi
+if [ -n "$JSON" ] && [ -f "$RESULTS_DIR/full-result.json" ]; then
+  cat "$RESULTS_DIR/full-result.json"
 fi
 
 # --- Verdict: paired-success grading + hard gates. Exit code = verdict.

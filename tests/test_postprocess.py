@@ -61,6 +61,13 @@ Scenarios (why each exists — review rounds 2-3, pm-os#1; rubric v3 2026-07-31)
                   back so they surface as tool-result bytes, then claims
                   completion; the judges (fooled) PASS, but a success line in
                   any non-Bash tool result is forged evidence — harness FAILs
+  healthy-slug    the arm-qualifying POSITIVE pin: identical to healthy
+                  but scored in production slug mode (metadata source =
+                  mysecond-ai/pm-os, traces' pinned commands to match) on
+                  the cli-default arm — exit 0 AND arm_flip_qualifying true.
+                  Together with healthy (local mode, exit 0 but NOT
+                  arm-qualifying) this pins that a passing run outside the
+                  registered slug+arm scope can never count toward the bar
   missing-trace-path  a run with no trace_path key FAILS (success
                   unverifiable — absence of evidence is not a pass)
   invalid-score   a native score outside [0, 1] FAILS by name (a broken
@@ -79,9 +86,12 @@ Scenarios (why each exists — review rounds 2-3, pm-os#1; rubric v3 2026-07-31)
                   names both possibilities and directs a human to the
                   kept trace. Documented behavior, not an accident.
 
-Exit-code contract asserted per scenario: 0 = flip-qualifying pass,
-2 = passed-but-partial, 1 = failed. Verdict JSON coherence is asserted
-against the same contract (passed / flip_qualifying / exit_code fields).
+Exit-code contract asserted per scenario: 0 = the run passed every gate,
+2 = passed-but-partial, 1 = failed. arm_flip_qualifying is stricter than
+exit 0: it additionally requires production slug mode on a registered arm,
+computed in the coherence assertion from each fixture's own run-metadata
+against the post-processor's pinned constants (PROD_SLUG/REGISTERED_ARMS).
+The flip bar itself needs both registered arms green.
 
 Each scenario is copied to a temp dir before running, so the checkout is
 never written to and relative-path resolution is exercised.
@@ -122,10 +132,21 @@ def load_postprocessor():
     return module
 
 
+_PP_CACHE = None
+
+
+def pp_module():
+    """The post-processor module, loaded once (source of pinned constants)."""
+    global _PP_CACHE
+    if _PP_CACHE is None:
+        _PP_CACHE = load_postprocessor()
+    return _PP_CACHE
+
+
 def scan_tracked_raw_bytes():
     """Return offending paths: git-tracked files whose RAW bytes match an
     anchored success regex. Must be empty — see module docstring."""
-    pp = load_postprocessor()
+    pp = pp_module()
     out = subprocess.run(
         ["git", "-C", str(REPO), "ls-files", "-z"],
         capture_output=True, check=True, timeout=60,
@@ -166,14 +187,25 @@ def run_scenario(src):
         else:
             verdict = json.loads(verdict_path.read_text(encoding="utf-8"))
             want_passed = expected["exit"] in (0, 2)
-            want_flip = expected["exit"] == 0
+            # arm-qualifying = clean exit AND production slug AND registered
+            # arm — computed from the fixture's own metadata against the
+            # post-processor's pinned constants (no duplicated literals).
+            meta_path = work / "run-metadata.json"
+            try:
+                meta = json.loads(meta_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                meta = {}
+            want_arm = (expected["exit"] == 0
+                        and meta.get("marketplace_source") == pp_module().PROD_SLUG
+                        and meta.get("model_arm") in pp_module().REGISTERED_ARMS)
             if verdict.get("passed") is not want_passed:
                 problems.append(
                     f"verdict passed={verdict.get('passed')} disagrees with "
                     f"expected exit {expected['exit']}")
-            if verdict.get("flip_qualifying") is not want_flip:
+            if verdict.get("arm_flip_qualifying") is not want_arm:
                 problems.append(
-                    f"verdict flip_qualifying={verdict.get('flip_qualifying')} "
+                    f"verdict arm_flip_qualifying="
+                    f"{verdict.get('arm_flip_qualifying')} "
                     f"disagrees with expected exit {expected['exit']}")
             if verdict.get("exit_code") != expected["exit"]:
                 problems.append(

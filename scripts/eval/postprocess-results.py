@@ -116,10 +116,28 @@ What it enforces:
    item 3). Every case mean >= --threshold (default 0.85). Clean run =
    adjusted >= 0.99; clean x/n per case is the reported prior-art shape.
 
-EXIT CODES (automation contract):
-  0 = full pass, flip-qualifying
+6. VOTE PERSISTENCE: compliance-verdict.json carries, per case, a
+   run_details list — one record per run with its adjusted score,
+   validity/refusal flags, and every grader's persisted judgment fields
+   (passed, judge_votes, explanation) copied from the aggregate. This is
+   the fullest per-vote record the eval tool exposes: `claude plugin eval`
+   judges are single-token voters (the judge prompt ends "Respond with
+   exactly one word: PASS or FAIL" — verified against CLI 2.1.220), so
+   rationale TEXT per vote does not exist to persist; the votes, the
+   grader's evidence excerpt (in aggregate-result.json), the full run
+   record (full-result.json, written by the runner), and kept traces on
+   failure are the calibration record.
+
+EXIT CODES (automation contract — ARM-SCOPED: one invocation scores one
+model arm; the flip bar itself needs BOTH arms green, default and
+high-reasoning — see the suite README, "The flip-qualifying bar"):
+  0 = this run passed every gate, un-filtered. arm_flip_qualifying in the
+      verdict is stricter than exit 0: it also requires production slug
+      mode on a registered arm (PROD_SLUG / REGISTERED_ARMS below) — a
+      passing local-mode or other-arm run exits 0 but records NOT
+      arm-qualifying; one arm's half of the flip bar, never the full bar
   2 = every gate passed but the run was CASE_GLOB-partial — completed, NOT
-      flip-qualifying (CI must treat any non-zero as red)
+      arm-qualifying (CI must treat any non-zero as red)
   1 = anything else failed
 
 Usage:
@@ -182,6 +200,17 @@ MKT_WEIGHT = 1.0
 INST_WEIGHT = 3.0
 ADJUSTED_TOTAL = NATIVE_TOTAL + MKT_WEIGHT + INST_WEIGHT
 CLEAN_BAR = 0.99
+
+# Arm-qualification scope. A verdict counts toward the flip bar only when it
+# scored the REAL surface (production slug mode) on a REGISTERED arm — the
+# README's flip-qualifying bar. Passing runs outside this scope (local mode,
+# other arms such as MODEL=sonnet) still exit 0 — the run itself passed —
+# but are marked NOT arm-qualifying so they can never be counted toward the
+# flip gate. Other arms are scored against the pre-registered per-case
+# criteria (eval-stabilization plan §2 Phase 2) by reading the verdict's
+# case fields directly; the arm flag never asserts them.
+PROD_SLUG = "mysecond-ai/pm-os"
+REGISTERED_ARMS = ("cli-default", "opus")
 
 # ---- Strict command grammar (see module docstring, item 4) -----------------
 # `|` and `>` are NOT globally forbidden: the anchored segment regexes admit
@@ -490,6 +519,7 @@ def main():
             if expected_n is not None and n != expected_n:
                 failures.append(f"{cname}: expected {expected_n} run(s), found {n}")
             adjusted_scores = []
+            run_records = []
             clean = refusals = errors = 0
 
             for i, run in enumerate(runs, start=1):
@@ -635,6 +665,27 @@ def main():
                 if run_valid and not run_refused and adjusted >= CLEAN_BAR:
                     clean += 1
 
+                # Vote persistence (docstring item 6): copy each grader's
+                # persisted judgment fields verbatim so a calibration
+                # question is a file read, not trace archaeology. Duplicate
+                # grader names collapse here — that run already FAILed the
+                # grader-shape check above.
+                run_records.append({
+                    "run": i,
+                    "adjusted": round(adjusted, 4),
+                    "valid": run_valid,
+                    "refused": run_refused,
+                    "graders": {
+                        g["name"]: {
+                            k: g.get(k)
+                            for k in ("passed", "judge_votes", "explanation")
+                            if k in g
+                        }
+                        for g in graders
+                        if isinstance(g, dict) and isinstance(g.get("name"), str)
+                    },
+                })
+
             mean = (sum(adjusted_scores) / len(adjusted_scores)
                     if adjusted_scores else 0.0)
             if mean < args.threshold:
@@ -648,11 +699,22 @@ def main():
                 "errors": errors,
                 "adjusted_mean": round(mean, 4),
                 "adjusted_scores": [round(s, 4) for s in adjusted_scores],
+                "run_details": run_records,
             })
 
         passed = not failures
-        flip_qualifying = passed and not partial
-        exit_code = 0 if flip_qualifying else (2 if passed else 1)
+        run_pass = passed and not partial
+        # ARM-SCOPED by construction: this verdict covers exactly ONE
+        # invocation of ONE model arm (recorded in model_arm) — one arm's
+        # half of the flip bar; no single verdict file can assert the bar.
+        # ARM-QUALIFYING requires more than a clean exit: the run must have
+        # scored production slug mode on a registered arm (PROD_SLUG /
+        # REGISTERED_ARMS above). Local-mode or other-arm passes exit 0 but
+        # are marked NOT arm-qualifying.
+        source_is_prod = meta.get("marketplace_source") == PROD_SLUG
+        arm_is_registered = meta.get("model_arm") in REGISTERED_ARMS
+        arm_flip_qualifying = run_pass and source_is_prod and arm_is_registered
+        exit_code = 0 if run_pass else (2 if passed else 1)
         verdict = {
             "threshold": args.threshold,
             "model_arm": meta.get("model_arm", "unknown"),
@@ -660,7 +722,7 @@ def main():
             "claude_version": agg.get("claude_version"),
             "partial": partial,
             "passed": passed,
-            "flip_qualifying": flip_qualifying,
+            "arm_flip_qualifying": arm_flip_qualifying,
             "exit_code": exit_code,
             "failures": failures,
             "cases": verdict_cases,
@@ -687,10 +749,22 @@ def main():
                 print(f"  - {f}")
         elif partial:
             print(f"\nPARTIAL RUN (case filter '{case_glob}'): every gate "
-                  "passed, but this is NOT flip-qualifying (exit 2).")
+                  "passed, but this is NOT arm-qualifying (exit 2).")
         else:
-            print("\nPASS — every case complete, every gate clear, every mean "
-                  "over the bar, zero refusals, zero errors.")
+            print("\nPASS (this arm) — every case complete, every gate clear, "
+                  "every mean over the bar, zero refusals, zero errors. The "
+                  "flip bar needs BOTH model arms green — see the README.")
+            if not arm_flip_qualifying:
+                why = []
+                if not source_is_prod:
+                    why.append("local-mode marketplace source")
+                if not arm_is_registered:
+                    why.append(f"non-registered arm "
+                               f"'{verdict['model_arm']}'")
+                print("NOT arm-qualifying (" + "; ".join(why) + ") — "
+                      "flip-bar scoring runs production slug mode on "
+                      "cli-default or MODEL=opus; other arms are read "
+                      "against the pre-registered per-case criteria.")
         if out_path:
             print(f"\nVerdict written to {out_path}")
         return exit_code

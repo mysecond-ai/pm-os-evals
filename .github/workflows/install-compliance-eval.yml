@@ -1,0 +1,119 @@
+# Install compliance eval — the §3.9 flip gate (see evals/install-compliance/README.md).
+#
+# Runs the /connect-paste eval harness: does a cold Claude agent, given the
+# production paste, execute marketplace add + plugin install and hand off to
+# /mysecond without refusal or stall? (Strict cases; the wary case scores
+# verify-then-resolve instead — see evals/install-compliance/README.md.)
+#
+# Trigger: manual dispatch ONLY. This repo holds the evals, not the plugin;
+# there is no release channel here to gate on PRs. Scoring runs that count
+# are local invocations where both model arms are available — dispatch is a
+# rehearsal lane (one arm per dispatch: the CLI default unless the `model`
+# input overrides it; no dispatch outcome is arm-qualifying on its own —
+# the post-processor records that in the verdict).
+#
+# THREAT MODEL / SECRETS — the rule, stated plainly:
+#   Credentials are available on `workflow_dispatch` only (a maintainer
+#   manually running a trusted ref). PR-triggered execution of this
+#   workflow does not exist — a PR run would execute the PR's own
+#   (modifiable) scripts, and passing a secret into that would let a
+#   malicious PR exfiltrate it.
+#
+# AUTH: configure ONE repo secret: ANTHROPIC_API_KEY (Anthropic API key) or
+# CLAUDE_CODE_OAUTH_TOKEN (from `claude setup-token` on a maintainer
+# machine). No credential is stored in this repo. Without a secret, dispatch
+# runs fail loudly with instructions — never a silent green skip.
+#
+# CLI PIN: every behavioral claim this harness relies on (the early-access
+# gate env name CLAUDE_CODE_WALNUT_SPIRE, per-run scaffold isolation, the
+# case.yaml schema, --allow-tools) was verified on Claude Code 2.1.207 and
+# re-checked on 2.1.220 — but the runner's `--json <path>` persistence flag
+# REQUIRES 2.1.220: 2.1.207 parses `--json` as a boolean and treats the
+# path as a positional case target (verified against both binaries), so the
+# 2.1.220 pin is installed below.
+# Upgrade procedure: bump the pin deliberately in its own PR, re-verify the
+# gate env name still exists in the new binary, re-run
+# `claude plugin eval --runs 1` structurally, then merge.
+#
+# MARKETPLACE MODE: default is the production slug (mysecond-ai/pm-os — the
+# plugin repo is public). Local mode needs a plugin checkout on disk and is
+# not meaningful in CI.
+
+name: install-compliance-eval
+
+on:
+  workflow_dispatch:
+    inputs:
+      runs:
+        description: "Runs per case (prior-art n = 6)"
+        default: "6"
+        required: false
+      model:
+        description: "Model override for the agent under eval (empty = CLI default). NOTE: CI covers one arm per dispatch; the flip-qualifying bar needs default AND a high-reasoning arm — see evals/install-compliance/README.md"
+        default: ""
+        required: false
+
+jobs:
+  install-compliance-eval:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Credential preflight (loud gate when absent)
+        shell: bash
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: |
+          if [ -z "$ANTHROPIC_API_KEY" ] && [ -z "$CLAUDE_CODE_OAUTH_TOKEN" ]; then
+            {
+              echo "## Install compliance eval — NOT RUN (no credential secret)"
+              echo ""
+              echo "Configure an ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN repo secret,"
+              echo "or run locally: scripts/eval/run-install-compliance.sh"
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::error::No Claude credential secret configured — eval not run. See the step summary."
+            exit 1
+          fi
+          echo "Credential present."
+
+      - name: Install Claude Code (pinned — see CLI PIN note above)
+        shell: bash
+        run: npm install -g @anthropic-ai/claude-code@2.1.220
+
+      - name: Run harness
+        id: harness
+        # `shell: bash` makes GitHub run this with `-e -o pipefail`, so the
+        # step fails on the RUNNER's exit code, not tee's. Without it, the
+        # default shell has no pipefail and every harness failure — crash,
+        # failed 0.85 bar, renamed early-access gate — would show green.
+        shell: bash
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          RUNS: ${{ github.event.inputs.runs || '6' }}
+          MODEL: ${{ github.event.inputs.model || '' }}
+        run: |
+          bash scripts/eval/run-install-compliance.sh | tee eval-output.log
+
+      - name: Upload results
+        # Runs whenever the harness step ran (pass OR fail — a failed run's
+        # results are exactly what you want to inspect), and fails loudly if
+        # the harness ran but produced no results directory. The log is
+        # uploaded separately below so its presence can never mask missing
+        # results. Skipped when the credential preflight stopped the job.
+        if: ${{ always() && steps.harness.outcome != 'skipped' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: install-compliance-results
+          path: evals/results/
+          if-no-files-found: error
+
+      - name: Upload run log
+        if: ${{ always() && steps.harness.outcome != 'skipped' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: install-compliance-log
+          path: eval-output.log
+          if-no-files-found: ignore

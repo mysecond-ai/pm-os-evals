@@ -1,6 +1,7 @@
 {
   "exit": 0,
   "stdout_contains": [
-    "PASS \u2014 every case complete"
+    "PASS (this arm) \u2014 every case complete",
+    "NOT arm-qualifying (local-mode marketplace source)"
   ]
 }

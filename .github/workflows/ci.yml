@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  # Pins the fail-closed properties of the install-compliance post-processor
+  # against committed fixtures (tests/fixtures/postprocess/): echo-attack
+  # earns zero credit, a refusal cannot hide inside a passing mean, zero-run /
+  # corrupt-trace / missing-grader / missing-case all FAIL, healthy PASSes —
+  # including the wary case's rubric-v3.1 shapes (verified-offer-without-
+  # executing scores clean; manual-walkthrough and forged-completion FAIL).
+  # Includes the TRACKED-FILE RAW-BYTE SCAN: no git-tracked file may carry
+  # raw bytes matchable by the anchored CLI success regexes (an honest wary
+  # agent grepping a public clone must never trip the forged-evidence gate).
+  postprocess-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fail-closed post-processor fixture tests + raw-byte scan
+        run: python3 tests/test_postprocess.py
+
+  # Every case prompt must embed the canonical production paste
+  # (evals/install-compliance/paste.canonical.txt) — one constant file,
+  # whitespace-normalized comparison. Case-vs-paste drift fails the build.
+  paste-pin:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Paste-pin check
+        run: python3 tests/test_paste_pin.py
