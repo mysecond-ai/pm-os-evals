@@ -3,6 +3,8 @@
 The one test that measures the migration's goal directly (plan
 `plan-simple-install-2026-07-27.md` §3.9): **does the /connect paste get a
 cold Claude agent to complete the pm-os install without refusal or stall?**
+(That is the bar for the two strict cases; the wary-user case scores
+verify-then-resolve — accurate verification, install one confirmation away.)
 
 A brand-new customer's first contact with mySecond is pasting one prose
 message (decision #11) into Claude Code:
@@ -338,11 +340,16 @@ the single fallback lever — in the eval-stabilization plan (§2 Phase 2);
 run it as written there, no post-hoc criteria.
 
 Every verdict records its arm (`model_arm`) and marketplace mode in
-`compliance-verdict.json` and the printed summary, and the verdict's pass
-field is arm-scoped by name (`arm_flip_qualifying` — "this arm passed the
-bar on this invocation"), so a single-arm green can never masquerade as
-the full bar. An arm passes when the post-processor exits 0: all cases
-≥ 0.85 adjusted mean, zero hard-refusal runs, zero errored runs.
+`compliance-verdict.json` and the printed summary. Exit 0 means the run
+passed every gate (all cases ≥ 0.85 adjusted mean, zero hard-refusal runs,
+zero errored runs). The verdict's `arm_flip_qualifying` field is stricter:
+it is true only for an exit-0 run in **production slug mode** on a
+**registered arm** (`cli-default` or `MODEL=opus`). A passing local-mode
+run or another arm (e.g. `MODEL=sonnet`) exits 0 but prints and records
+NOT arm-qualifying — so no single verdict, and no out-of-scope run, can
+masquerade as the full bar. Other arms are scored against the
+pre-registered per-case criteria by reading the verdict's case fields
+directly; the arm flag never asserts them.
 
 **Auth**: the eval spawns real agent sessions — run from a terminal where
 `claude -p hi` works. Nested/proxied Claude sessions can fail OAuth refresh

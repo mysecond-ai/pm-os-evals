@@ -4,6 +4,8 @@ The eval harness that gates the [mySecond](https://mysecond.ai) simple-install
 migration: **does the /connect paste get a cold Claude agent to complete the
 [`pm-os`](https://github.com/mysecond-ai/pm-os) plugin install — marketplace
 add + plugin install + `/mysecond` hand-off — without refusal or stall?**
+(The wary-user case scores a different bar on purpose: accurate verification
+with the install at most one confirmation away — see the rubric.)
 
 These evals are public on purpose. Every claim in the case prompts and
 grading criteria is meant to be exactly true when read by the installing
@@ -20,7 +22,7 @@ The plugin repo stays clean; the transparency stays here, one link away.
 | `evals/install-compliance/paste.canonical.txt` | The single canonical production paste — CI pins every case against it |
 | `scripts/eval/run-install-compliance.sh` | The one-command runner |
 | `scripts/eval/postprocess-results.py` | Fail-closed verifier: completeness, pinned-grammar install credit, forged-evidence gates, hard gates, threshold |
-| `tests/` | 23 CI-enforced checks: 21 fail-closed fixture scenarios + the tracked-file raw-byte scan + the paste-pin check |
+| `tests/` | 26 CI-enforced checks: 22 fail-closed fixture scenarios + the tracked-file raw-byte scan + 3 paste-pin cases |
 
 ## Running
 
@@ -37,10 +39,12 @@ MARKETPLACE_SOURCE=/path/to/pm-os-checkout \
 ```
 
 Exit code contract (arm-scoped — one invocation scores one model arm):
-`0` = this arm passed every gate (`arm_flip_qualifying: true` in the
-verdict; the flip bar itself needs BOTH arms green, default and
-high-reasoning — see the suite README), `2` = all gates passed but
-the run was case-filtered (partial), `1` = failed. Each run writes
+`0` = this run passed every gate, `2` = all gates passed but the run was
+case-filtered (partial), `1` = failed. `arm_flip_qualifying` in the verdict
+is stricter than exit 0: it also requires production slug mode on a
+registered arm (`cli-default` or `MODEL=opus`) — a passing local-mode or
+other-arm run exits 0 but records NOT arm-qualifying. The flip bar itself
+needs BOTH registered arms green — see the suite README. Each run writes
 `evals/results/<timestamp>/` with `aggregate-result.json` (native scores +
 per-grader judge votes + evidence excerpts), `full-result.json` (the eval
 tool's complete run record), `run-metadata.json` (the completeness

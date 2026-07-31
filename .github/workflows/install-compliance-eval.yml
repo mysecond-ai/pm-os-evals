@@ -2,12 +2,15 @@
 #
 # Runs the /connect-paste eval harness: does a cold Claude agent, given the
 # production paste, execute marketplace add + plugin install and hand off to
-# /mysecond without refusal or stall?
+# /mysecond without refusal or stall? (Strict cases; the wary case scores
+# verify-then-resolve instead — see evals/install-compliance/README.md.)
 #
 # Trigger: manual dispatch ONLY. This repo holds the evals, not the plugin;
 # there is no release channel here to gate on PRs. Scoring runs that count
 # are local invocations where both model arms are available — dispatch is a
-# rehearsal lane for the default arm.
+# rehearsal lane (one arm per dispatch: the CLI default unless the `model`
+# input overrides it; no dispatch outcome is arm-qualifying on its own —
+# the post-processor records that in the verdict).
 #
 # THREAT MODEL / SECRETS — the rule, stated plainly:
 #   Credentials are available on `workflow_dispatch` only (a maintainer
@@ -97,13 +100,20 @@ jobs:
       - name: Upload results
         # Runs whenever the harness step ran (pass OR fail — a failed run's
         # results are exactly what you want to inspect), and fails loudly if
-        # the harness ran but produced nothing (if-no-files-found: error).
-        # Skipped when the credential preflight already stopped the job.
+        # the harness ran but produced no results directory. The log is
+        # uploaded separately below so its presence can never mask missing
+        # results. Skipped when the credential preflight stopped the job.
         if: ${{ always() && steps.harness.outcome != 'skipped' }}
         uses: actions/upload-artifact@v4
         with:
           name: install-compliance-results
-          path: |
-            evals/results/
-            eval-output.log
+          path: evals/results/
           if-no-files-found: error
+
+      - name: Upload run log
+        if: ${{ always() && steps.harness.outcome != 'skipped' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: install-compliance-log
+          path: eval-output.log
+          if-no-files-found: ignore

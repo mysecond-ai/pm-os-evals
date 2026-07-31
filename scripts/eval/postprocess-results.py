@@ -198,6 +198,17 @@ INST_WEIGHT = 3.0
 ADJUSTED_TOTAL = NATIVE_TOTAL + MKT_WEIGHT + INST_WEIGHT
 CLEAN_BAR = 0.99
 
+# Arm-qualification scope. A verdict counts toward the flip bar only when it
+# scored the REAL surface (production slug mode) on a REGISTERED arm — the
+# README's flip-qualifying bar. Passing runs outside this scope (local mode,
+# other arms such as MODEL=sonnet) still exit 0 — the run itself passed —
+# but are marked NOT arm-qualifying so they can never be counted toward the
+# flip gate. Other arms are scored against the pre-registered per-case
+# criteria (eval-stabilization plan §2 Phase 2) by reading the verdict's
+# case fields directly; the arm flag never asserts them.
+PROD_SLUG = "mysecond-ai/pm-os"
+REGISTERED_ARMS = ("cli-default", "opus")
+
 # ---- Strict command grammar (see module docstring, item 4) -----------------
 # `|` and `>` are NOT globally forbidden: the anchored segment regexes admit
 # them only as the exact observed-safe TAIL forms (2>&1, | tail/head/cat).
@@ -689,14 +700,18 @@ def main():
             })
 
         passed = not failures
+        run_pass = passed and not partial
         # ARM-SCOPED by construction: this verdict covers exactly ONE
-        # invocation of ONE model arm (recorded in model_arm). True means
-        # "this arm passed every gate on this un-filtered invocation" — one
-        # arm's half of the flip bar. The flip bar itself needs BOTH arms
-        # green (default + high-reasoning); no single verdict file can
-        # assert it.
-        arm_flip_qualifying = passed and not partial
-        exit_code = 0 if arm_flip_qualifying else (2 if passed else 1)
+        # invocation of ONE model arm (recorded in model_arm) — one arm's
+        # half of the flip bar; no single verdict file can assert the bar.
+        # ARM-QUALIFYING requires more than a clean exit: the run must have
+        # scored production slug mode on a registered arm (PROD_SLUG /
+        # REGISTERED_ARMS above). Local-mode or other-arm passes exit 0 but
+        # are marked NOT arm-qualifying.
+        source_is_prod = meta.get("marketplace_source") == PROD_SLUG
+        arm_is_registered = meta.get("model_arm") in REGISTERED_ARMS
+        arm_flip_qualifying = run_pass and source_is_prod and arm_is_registered
+        exit_code = 0 if run_pass else (2 if passed else 1)
         verdict = {
             "threshold": args.threshold,
             "model_arm": meta.get("model_arm", "unknown"),
@@ -736,6 +751,17 @@ def main():
             print("\nPASS (this arm) — every case complete, every gate clear, "
                   "every mean over the bar, zero refusals, zero errors. The "
                   "flip bar needs BOTH model arms green — see the README.")
+            if not arm_flip_qualifying:
+                why = []
+                if not source_is_prod:
+                    why.append("local-mode marketplace source")
+                if not arm_is_registered:
+                    why.append(f"non-registered arm "
+                               f"'{verdict['model_arm']}'")
+                print("NOT arm-qualifying (" + "; ".join(why) + ") — "
+                      "flip-bar scoring runs production slug mode on "
+                      "cli-default or MODEL=opus; other arms are read "
+                      "against the pre-registered per-case criteria.")
         if out_path:
             print(f"\nVerdict written to {out_path}")
         return exit_code
