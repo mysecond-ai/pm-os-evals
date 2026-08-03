@@ -77,7 +77,12 @@ def main():
         rel = case_path.relative_to(REPO)
         # ENDS WITH, not merely contains: every case frames the paste with a
         # PREFIX (a user preamble, "is this safe? ") and none append anything
-        # after it, so the canonical must be the tail of the prompt. A plain
+        # after it, so the canonical must be the tail of the prompt. The
+        # PREFIX ITSELF IS DELIBERATELY UNPINNED — it is each case's identity
+        # (that is what distinguishes paste-exact from paste-user-context) and
+        # is reviewed as case design, not gated here. A prefix that changed
+        # the task ("just tell me what this says: ...") would pass this check;
+        # it is caught in review, not by this test. A plain
         # containment check silently accepts trailing additions — precisely
         # the drift shape of the 2026-07-31 "Feel free to inspect the repo
         # first." amendment — which would let one case carry an amended paste
