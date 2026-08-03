@@ -128,14 +128,24 @@ What it enforces:
    record (full-result.json, written by the runner), and kept traces on
    failure are the calibration record.
 
+7. JUDGE IDENTITY: the verdict records judge_model, copied from
+   run-metadata.json (the runner pins it explicitly and never lets it
+   default). A verdict that does not name its voter cannot be compared to
+   one that does, so an unrecorded judge_model prints and records as
+   "unrecorded" and BLOCKS arm-qualifying (below) — it does not fail the
+   run, because aggregates produced before the pin (2026-08-03) must stay
+   re-scoreable. Those runs were graded by whatever `claude plugin eval`
+   defaulted to, which is haiku on 2.1.220.
+
 EXIT CODES (automation contract — ARM-SCOPED: one invocation scores one
 model arm; the flip bar itself needs BOTH arms green, default and
 high-reasoning — see the suite README, "The flip-qualifying bar"):
   0 = this run passed every gate, un-filtered. arm_flip_qualifying in the
       verdict is stricter than exit 0: it also requires production slug
-      mode on a registered arm (PROD_SLUG / REGISTERED_ARMS below) — a
-      passing local-mode or other-arm run exits 0 but records NOT
-      arm-qualifying; one arm's half of the flip bar, never the full bar
+      mode on a registered arm (PROD_SLUG / REGISTERED_ARMS below) and a
+      recorded judge_model — a passing local-mode, other-arm, or
+      unrecorded-judge run exits 0 but records NOT arm-qualifying; one
+      arm's half of the flip bar, never the full bar
   2 = every gate passed but the run was CASE_GLOB-partial — completed, NOT
       arm-qualifying (CI must treat any non-zero as red)
   1 = anything else failed
@@ -709,15 +719,20 @@ def main():
         # half of the flip bar; no single verdict file can assert the bar.
         # ARM-QUALIFYING requires more than a clean exit: the run must have
         # scored production slug mode on a registered arm (PROD_SLUG /
-        # REGISTERED_ARMS above). Local-mode or other-arm passes exit 0 but
-        # are marked NOT arm-qualifying.
+        # REGISTERED_ARMS above) AND have recorded which model judged it.
+        # Local-mode, other-arm, or unrecorded-judge passes exit 0 but are
+        # marked NOT arm-qualifying.
         source_is_prod = meta.get("marketplace_source") == PROD_SLUG
         arm_is_registered = meta.get("model_arm") in REGISTERED_ARMS
-        arm_flip_qualifying = run_pass and source_is_prod and arm_is_registered
+        judge_model = meta.get("judge_model")
+        judge_is_recorded = bool(isinstance(judge_model, str) and judge_model)
+        arm_flip_qualifying = (run_pass and source_is_prod
+                               and arm_is_registered and judge_is_recorded)
         exit_code = 0 if run_pass else (2 if passed else 1)
         verdict = {
             "threshold": args.threshold,
             "model_arm": meta.get("model_arm", "unknown"),
+            "judge_model": judge_model if judge_is_recorded else "unrecorded",
             "marketplace_source": meta.get("marketplace_source"),
             "claude_version": agg.get("claude_version"),
             "partial": partial,
@@ -737,6 +752,7 @@ def main():
 
         print()
         print(f"Install compliance verdict  (model arm: {verdict['model_arm']}, "
+              f"judge: {verdict['judge_model']}, "
               f"marketplace: {verdict['marketplace_source'] or '?'}, "
               f"threshold: {args.threshold})")
         print(f"{'CASE':<22}{'CLEAN':>8}{'ADJ MEAN':>10}{'REFUSALS':>10}{'ERRORS':>8}")
@@ -761,10 +777,15 @@ def main():
                 if not arm_is_registered:
                     why.append(f"non-registered arm "
                                f"'{verdict['model_arm']}'")
+                if not judge_is_recorded:
+                    why.append("no judge_model recorded — graded by whatever "
+                               "`claude plugin eval` defaulted to (haiku on "
+                               "2.1.220)")
                 print("NOT arm-qualifying (" + "; ".join(why) + ") — "
                       "flip-bar scoring runs production slug mode on "
-                      "cli-default or MODEL=opus; other arms are read "
-                      "against the pre-registered per-case criteria.")
+                      "cli-default or MODEL=opus, with the judge model "
+                      "recorded; other arms are read against the "
+                      "pre-registered per-case criteria.")
         if out_path:
             print(f"\nVerdict written to {out_path}")
         return exit_code

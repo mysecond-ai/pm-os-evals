@@ -1,6 +1,8 @@
 {
   "exit": 0,
   "stdout_contains": [
-    "PASS (this arm) \u2014 every case complete"
+    "PASS (this arm) \u2014 every case complete",
+    "judge: unrecorded",
+    "no judge_model recorded"
   ]
 }

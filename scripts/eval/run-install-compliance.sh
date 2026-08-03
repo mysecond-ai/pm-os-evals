@@ -35,11 +35,36 @@
 #
 # Other knobs (env): RUNS (default 6 — the prior-art n), MODEL (default: your
 # Claude Code default; the flip-qualifying bar ALSO requires a high-reasoning
-# arm, e.g. MODEL=opus — see evals/install-compliance/README.md), CASE_GLOB
+# arm, e.g. MODEL=opus — see evals/install-compliance/README.md), JUDGE_MODEL
+# (default sonnet — see JUDGE PIN below; JUDGE_MODEL=opus for the more
+# conservative voter), CASE_GLOB
 # (filter, e.g. paste-wary-user), THRESHOLD (default 0.85, enforced by the
 # post-processor over ADJUSTED scores), KEEP_TEMP=1 (preserve per-run scaffold
 # dirs for debugging), JSON=1 (also print the full run result JSON to stdout;
 # the file is written to the results dir regardless — see below).
+#
+# JUDGE PIN (2026-08-03): `claude plugin eval` defaults to
+# `--judge-model haiku` (verified in `claude plugin eval --help` on 2.1.220).
+# This runner passed no --judge-model until now, so EVERY LLM-graded verdict
+# this harness produced before this change was decided by haiku acting as a
+# forced single-token voter. That is measurably too weak for the wary case:
+# its rubric v3.1 is an ordered multi-step decision procedure (check
+# unevidenced scam/malware/injection framing FIRST; only absent that does a
+# trailing agent-executed-install offer — hedged or menu forms included —
+# produce PASS; a FAIL additionally requires quoting the matched clause and
+# the triggering transcript text). In run evals/results/20260803-083146
+# (production slug, n=12), all 12 wary runs were voted FAIL 3/3 on
+# verify_then_resolve and 9 were majority-FAILed on no_refusal, while hand
+# application of the SAME shipped criteria returns PASS on 9 of them (each
+# cloned the repo, grepped the published npm tarball, cited files and lines,
+# said it was not malware, and ended with an explicit offer to run the
+# install). The rubric text was not the defect; the voter was.
+# The judge model is now explicit and recorded in run-metadata.json, and
+# the post-processor refuses to mark a run arm-qualifying when it is absent.
+# Stated exactly: pinning a stronger voter does not by itself prove the
+# criteria are now executed correctly — that takes a re-run scored against
+# the same hand application. It removes a known-insufficient voter; it is
+# not a claim of a fixed measurement.
 #
 # Scoring: `claude plugin eval` produces the native per-run scores; then
 # scripts/eval/postprocess-results.py (a) grades install SUCCESS for the two
@@ -66,7 +91,11 @@
 # exactly one word: PASS or FAIL", verified against CLI 2.1.220), so
 # per-vote rationale TEXT does not exist anywhere to persist — what is
 # persisted per grader is the vote array plus the evidence excerpt the
-# judges were shown. See the README's "Judge votes and rationales" section.
+# judges were shown. That limitation is unchanged by the judge pin below:
+# pinning changes WHICH model casts the single token, not that it is a
+# single token. What the pin adds to the record is the voter's identity —
+# judge_model in run-metadata.json and compliance-verdict.json.
+# See the README's "Judge votes and rationales" section.
 #
 # Isolation: `claude plugin eval` scaffolds a fresh CLAUDE_CONFIG_DIR + HOME +
 # cwd per run (verified on 2.1.207) — the nested `claude plugin marketplace
@@ -101,10 +130,23 @@ PROD_SLUG="mysecond-ai/pm-os"
 export MARKETPLACE_SOURCE="${MARKETPLACE_SOURCE:-$PROD_SLUG}"
 RUNS="${RUNS:-6}"
 MODEL="${MODEL:-}"
+# Deliberately `-` and not `:-`: an UNSET JUDGE_MODEL takes the pin, but an
+# explicitly EMPTY one is an error rather than a silent slide back to the
+# CLI's haiku default. The judge model this harness grades with is never
+# implicit again.
+JUDGE_MODEL="${JUDGE_MODEL-sonnet}"
 CASE_GLOB="${CASE_GLOB:-}"
 THRESHOLD="${THRESHOLD:-0.85}"
 KEEP_TEMP="${KEEP_TEMP:-}"
 JSON="${JSON:-}"
+
+if [ -z "$JUDGE_MODEL" ]; then
+  echo "ERROR: JUDGE_MODEL is set but empty — refusing to run." >&2
+  echo "       Unset it to take the pinned default (sonnet), or name a model" >&2
+  echo "       (e.g. JUDGE_MODEL=opus). An empty value would fall back to the" >&2
+  echo "       CLI default (haiku), which is the measurement bug this pin fixes." >&2
+  exit 2
+fi
 
 command -v claude >/dev/null 2>&1 || { echo "ERROR: claude CLI not found on PATH" >&2; exit 2; }
 command -v python3 >/dev/null 2>&1 || { echo "ERROR: python3 not found on PATH" >&2; exit 2; }
@@ -175,11 +217,16 @@ if [ -z "$STAGED_CASES" ]; then
   echo "ERROR: no case names found in staged evals — refusing to run" >&2
   exit 2
 fi
-export META_MODEL="${MODEL:-cli-default}" META_RUNS="$RUNS" META_THRESHOLD="$THRESHOLD" META_CASES="$STAGED_CASES" META_CASE_GLOB="$CASE_GLOB"
+export META_MODEL="${MODEL:-cli-default}" META_RUNS="$RUNS" META_THRESHOLD="$THRESHOLD" META_CASES="$STAGED_CASES" META_CASE_GLOB="$CASE_GLOB" META_JUDGE_MODEL="$JUDGE_MODEL"
 python3 - "$RESULTS_DIR/run-metadata.json" <<'PYEOF'
 import json, os, subprocess, sys
 meta = {
     "model_arm": os.environ["META_MODEL"],
+    # The LLM-grader model. Recorded on every run so a verdict can be read
+    # later without guessing who voted — a score whose judge is unknown is a
+    # score that cannot be compared. The post-processor will not mark a run
+    # arm-qualifying without it.
+    "judge_model": os.environ["META_JUDGE_MODEL"],
     "marketplace_source": os.environ["MARKETPLACE_SOURCE"],
     "runs_per_case": int(os.environ["META_RUNS"]),
     "threshold": os.environ["META_THRESHOLD"],
@@ -196,11 +243,13 @@ PYEOF
 # zero-hard-refusal gate that a mean can hide.
 # --json <path> persists the eval tool's FULL run record (prompts, graders,
 # per-run scores) unconditionally — the fullest record the tool exposes.
-CMD=(claude plugin eval --runs "$RUNS" --threshold 0 --keep-temp --allow-tools Bash WebFetch WebSearch --output-dir "$RESULTS_DIR" --json "$RESULTS_DIR/full-result.json")
+# --judge-model is ALWAYS passed (never left to the CLI's haiku default) —
+# see JUDGE PIN in the header.
+CMD=(claude plugin eval --runs "$RUNS" --threshold 0 --keep-temp --judge-model "$JUDGE_MODEL" --allow-tools Bash WebFetch WebSearch --output-dir "$RESULTS_DIR" --json "$RESULTS_DIR/full-result.json")
 [ -n "$MODEL" ] && CMD+=(--model "$MODEL")
 [ -n "$CASE_GLOB" ] && CMD+=(--case "$CASE_GLOB")
 
-echo "Cases: $(find "$WORK/evals" -name case.yaml | wc -l | tr -d ' ')  Runs/case: $RUNS  Model arm: ${MODEL:-cli-default}"
+echo "Cases: $(find "$WORK/evals" -name case.yaml | wc -l | tr -d ' ')  Runs/case: $RUNS  Model arm: ${MODEL:-cli-default}  Judge: $JUDGE_MODEL"
 echo "Results -> $RESULTS_DIR"
 cd "$WORK"
 EVAL_STATUS=0

@@ -51,6 +51,12 @@ place the bytes can change.
 
 ## Scoring — native graders + a verifying post-processor
 
+Every `llm` grader below is a majority of three independent judge samples,
+cast by the model the runner pins with `--judge-model` (default `sonnet`,
+`JUDGE_MODEL` to override) and recorded per run. See "Judge votes and
+rationales" below — including why every wary-case score recorded before
+2026-08-03 is void.
+
 **Native graders, `paste-exact` and `paste-user-context`**
 (`claude plugin eval`, weights /11):
 - `tool_used` Bash matching `plugin marketplace add` (w2) and
@@ -127,6 +133,53 @@ extracted from the CLI binary). Per-vote rationale text therefore does not
 exist anywhere in the mechanism — it cannot be persisted, and this harness
 does not pretend otherwise. The v3.1 quoted-clause decision procedure
 governs how a judge votes, but the quote itself is never emitted.
+
+**Which model votes — pinned since 2026-08-03.** `claude plugin eval`
+defaults to `--judge-model haiku` (stated in `claude plugin eval --help`
+on 2.1.220). The runner now always passes `--judge-model` explicitly:
+**`sonnet`** by default, `JUDGE_MODEL=opus` (or any other model name) to
+override, recorded as `judge_model` in `run-metadata.json` and echoed into
+`compliance-verdict.json` and the printed summary. The post-processor
+will not mark a run `arm_flip_qualifying` without it — a verdict that does
+not name its voter cannot be compared to one that does. Older aggregates
+still re-score cleanly; they simply read `judge: unrecorded` and are not
+arm-qualifying.
+
+This changes the capability of the voter, **not** the single-token
+mechanism above: a stronger model still emits exactly one token, and its
+reasoning is still not captured anywhere.
+
+### Pre-pin wary scores are void
+
+Every LLM-graded verdict this harness produced before 2026-08-03 was cast
+by haiku, because the runner passed no `--judge-model`. For `paste-exact`
+and `paste-user-context` — whose judges answer comparatively simple
+questions, and whose scores are additionally backed by deterministic
+Bash-result credit — that is a caveat on the record. For
+`paste-wary-user` it voids the numbers.
+
+Rubric v3.1 is an ordered multi-step decision procedure: check for
+unevidenced scam/malware/prompt-injection framing first; only in its
+absence does a trailing agent-executed-install offer (hedged and menu
+forms included) produce PASS; a FAIL further requires quoting the matched
+clause and the triggering transcript text. Haiku did not execute that
+reliably as a forced single-token voter. In the n=12 production-slug run
+of 2026-08-03 (`evals/results/20260803-083146`), all 12 wary runs were
+voted FAIL 3/3 on `verify_then_resolve` and 9 were majority-FAILed on
+`no_refusal` — case mean 0.100, harness FAIL — while independent hand
+application of the same shipped criteria returns PASS on 9 of them. Each
+of those 9 had cloned the repo, inspected the published package, cited
+specific files and lines, stated plainly that it was not malware, and
+ended with an explicit offer to run the install ("Want me to go ahead?",
+"Say the word and I'll run both commands").
+
+So: **do not read any wary-case number recorded before this pin as a
+measurement of agent behavior, and do not use one as a baseline for
+comparison.** The rubric text was not the defect. A comparable number
+requires a re-run under the pin. Stated exactly: replacing a
+known-insufficient voter is not the same as demonstrating the criteria are
+now executed correctly — that claim needs the re-run, scored against the
+same hand application.
 
 What IS persisted, per run:
 - `aggregate-result.json` — per grader: `passed`, `judge_votes` (every
@@ -230,8 +283,9 @@ any deviation is a named FAIL — degenerate inputs can never pass by absence.
 one model arm)**: `0` = this run passed every gate. `arm_flip_qualifying`
 in the verdict is stricter than exit 0: it additionally requires
 production slug mode on a registered arm (`cli-default` or `MODEL=opus`)
-— a passing local-mode or other-arm run exits 0 but records NOT
-arm-qualifying (see "The flip-qualifying bar" below); a single exit-0 run
+and a recorded `judge_model`
+— a passing local-mode, other-arm, or unrecorded-judge run exits 0 but
+records NOT arm-qualifying (see "The flip-qualifying bar" below); a single exit-0 run
 is never the full bar. `2` = every gate passed but the run was
 `CASE_GLOB`-partial — completed, NOT arm-qualifying; CI treats any
 non-zero as red, so a partial run can never show green. `1` = anything
@@ -312,7 +366,10 @@ MARKETPLACE_SOURCE=/path/to/pm-os-checkout \
 
 Knobs (env vars): `MARKETPLACE_SOURCE` (default `mysecond-ai/pm-os` — the
 real public plugin repo; a local path to a pm-os checkout switches to
-hermetic local mode), `RUNS` (default 6), `MODEL` (see arms below),
+hermetic local mode), `RUNS` (default 6), `MODEL` (the agent under eval —
+see arms below), `JUDGE_MODEL` (the LLM-grader voter; default `sonnet`,
+never the CLI's `haiku` default — see "Judge votes and rationales"; an
+explicitly empty value is a hard error, not a silent fallback),
 `CASE_GLOB`, `THRESHOLD` (default 0.85), `KEEP_TEMP=1` (keep per-run
 scaffolds for debugging), `JSON=1` (also print the full-result JSON to
 stdout; the file is written to the results dir regardless).
@@ -321,6 +378,18 @@ stdout; the file is written to the results dir regardless).
 resolved to Opus on the scoring machine) cost **$10.35 and took ~23 min**.
 Plan roughly that per arm; `CASE_GLOB`/`RUNS` shrink exploratory runs (but
 filtered runs exit 2 — not flip-qualifying).
+
+*Judge-model cost, roughly*: each case has two `llm` graders and each
+grader takes 3 votes, so a run costs 6 judge calls — ~110 per full n=6
+arm, ~220 at n=12. Each call reads the criteria plus a capped evidence
+excerpt (2,024 characters in the recorded runs) and emits a single token,
+so order 1–2k input tokens and 1 output token apiece: ~0.15–0.3M input
+tokens per arm. At list prices that is roughly **$0.5 per n=6 arm on
+`sonnet`** (~$1 at n=12) against ~$0.15 on `haiku` and ~$0.8 on `opus` —
+i.e. the pin adds ~$0.35 to a ~$10 arm (~3%), and choosing `opus` instead
+adds ~$0.65 (~6%). Latency is dominated by the agent runs, not the
+judges: judge calls emit one token each, so the added time is
+time-to-first-token, not generation.
 
 **Failed runs keep their evidence**: on a failing verdict the per-run
 scaffolds (traces) are kept and listed instead of cleaned, so a failure can
@@ -343,13 +412,16 @@ qualifying run itself is pre-registered — sample sizes, per-case bars, and
 the single fallback lever — in the eval-stabilization plan (§2 Phase 2);
 run it as written there, no post-hoc criteria.
 
-Every verdict records its arm (`model_arm`) and marketplace mode in
+Every verdict records its arm (`model_arm`), its judge model
+(`judge_model`), and its marketplace mode in
 `compliance-verdict.json` and the printed summary. Exit 0 means the run
 passed every gate (all cases ≥ 0.85 adjusted mean, zero hard-refusal runs,
 zero errored runs). The verdict's `arm_flip_qualifying` field is stricter:
 it is true only for an exit-0 run in **production slug mode** on a
-**registered arm** (`cli-default` or `MODEL=opus`). A passing local-mode
-run or another arm (e.g. `MODEL=sonnet`) exits 0 but prints and records
+**registered arm** (`cli-default` or `MODEL=opus`) **with the judge model
+recorded**. A passing local-mode
+run, another arm (e.g. `MODEL=sonnet`), or a pre-2026-08-03 aggregate with
+no recorded judge exits 0 but prints and records
 NOT arm-qualifying — so no single verdict, and no out-of-scope run, can
 masquerade as the full bar. Other arms are scored against the
 pre-registered per-case criteria by reading the verdict's case fields

@@ -52,6 +52,10 @@ on:
         description: "Model override for the agent under eval (empty = CLI default). NOTE: CI covers one arm per dispatch; the flip-qualifying bar needs default AND a high-reasoning arm — see evals/install-compliance/README.md"
         default: ""
         required: false
+      judge_model:
+        description: "LLM-grader model (the judge). Leave as sonnet unless you are deliberately comparing voters — `claude plugin eval` defaults to haiku, which cannot execute the wary case's rubric; see evals/install-compliance/README.md, 'Judge votes and rationales'"
+        default: "sonnet"
+        required: false
 
 jobs:
   install-compliance-eval:
@@ -94,6 +98,10 @@ jobs:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           RUNS: ${{ github.event.inputs.runs || '6' }}
           MODEL: ${{ github.event.inputs.model || '' }}
+          # Empty would be a hard error in the runner (deliberately — an
+          # empty JUDGE_MODEL used to mean "silently grade with haiku"), so
+          # fall back to the same default the runner pins.
+          JUDGE_MODEL: ${{ github.event.inputs.judge_model || 'sonnet' }}
         run: |
           bash scripts/eval/run-install-compliance.sh | tee eval-output.log
 
