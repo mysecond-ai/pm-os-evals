@@ -9,8 +9,10 @@
 # there is no release channel here to gate on PRs. Scoring runs that count
 # are local invocations where both model arms are available — dispatch is a
 # rehearsal lane (one arm per dispatch: the CLI default unless the `model`
-# input overrides it; no dispatch outcome is arm-qualifying on its own —
-# the post-processor records that in the verdict).
+# input overrides it). A dispatch CAN write arm_flip_qualifying: true —
+# nothing discriminates CI from a local run — but the flip bar is BOTH
+# registered arms from one operator's local session, so treat a dispatch
+# verdict as a rehearsal signal, never as half the bar.
 #
 # THREAT MODEL / SECRETS — the rule, stated plainly:
 #   Credentials are available on `workflow_dispatch` only (a maintainer

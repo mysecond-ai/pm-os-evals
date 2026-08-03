@@ -221,6 +221,11 @@ CLEAN_BAR = 0.99
 # case fields directly; the arm flag never asserts them.
 PROD_SLUG = "mysecond-ai/pm-os"
 REGISTERED_ARMS = ("cli-default", "opus")
+# Judges capable of executing the wary rubric's ordered decision
+# procedure. haiku is the CLI's DEFAULT and is deliberately absent: it
+# is the known-insufficient voter this pin exists to displace, so a run
+# graded by it records its judge honestly and still cannot qualify.
+REGISTERED_JUDGES = ("sonnet", "opus")
 
 # ---- Strict command grammar (see module docstring, item 4) -----------------
 # `|` and `>` are NOT globally forbidden: the anchored segment regexes admit
@@ -730,8 +735,10 @@ def main():
         # stamps arm_flip_qualifying true while printing `judge:    `.
         judge_is_recorded = bool(isinstance(judge_model, str)
                                  and judge_model.strip())
+        judge_is_registered = (judge_is_recorded
+                               and judge_model.strip() in REGISTERED_JUDGES)
         arm_flip_qualifying = (run_pass and source_is_prod
-                               and arm_is_registered and judge_is_recorded)
+                               and arm_is_registered and judge_is_registered)
         exit_code = 0 if run_pass else (2 if passed else 1)
         verdict = {
             "threshold": args.threshold,
@@ -785,6 +792,11 @@ def main():
                     why.append("no judge_model recorded — graded by whatever "
                                "`claude plugin eval` defaulted to (haiku on "
                                "2.1.220)")
+                elif not judge_is_registered:
+                    why.append(f"judge {judge_model.strip()!r} is not a "
+                               f"registered judge {REGISTERED_JUDGES} — it "
+                               "cannot be shown to execute the wary rubric's "
+                               "ordered decision procedure")
                 print("NOT arm-qualifying (" + "; ".join(why) + ") — "
                       "flip-bar scoring runs production slug mode on "
                       "cli-default or MODEL=opus, with the judge model "

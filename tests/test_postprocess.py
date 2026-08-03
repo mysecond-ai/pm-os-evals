@@ -205,12 +205,16 @@ def run_scenario(src):
                 meta = json.loads(meta_path.read_text(encoding="utf-8"))
             except (OSError, json.JSONDecodeError):
                 meta = {}
+            judge = meta.get("judge_model")
             want_arm = bool(
                 expected["exit"] == 0
                 and meta.get("marketplace_source") == pp_module().PROD_SLUG
                 and meta.get("model_arm") in pp_module().REGISTERED_ARMS
-                and isinstance(meta.get("judge_model"), str)
-                and meta.get("judge_model"))
+                and isinstance(judge, str)
+                # REGISTERED_JUDGES, not merely recorded: haiku is the CLI
+                # default and cannot execute the wary rubric, so recording it
+                # honestly must still block arm-qualification.
+                and judge.strip() in pp_module().REGISTERED_JUDGES)
             if verdict.get("passed") is not want_passed:
                 problems.append(
                     f"verdict passed={verdict.get('passed')} disagrees with "

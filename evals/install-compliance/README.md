@@ -285,9 +285,11 @@ any deviation is a named FAIL — degenerate inputs can never pass by absence.
 one model arm)**: `0` = this run passed every gate. `arm_flip_qualifying`
 in the verdict is stricter than exit 0: it additionally requires
 production slug mode on a registered arm (`cli-default` or `MODEL=opus`)
-and a recorded `judge_model`
-— a passing local-mode, other-arm, or unrecorded-judge run exits 0 but
-records NOT arm-qualifying (see "The flip-qualifying bar" below); a single exit-0 run
+graded by a registered judge (`sonnet` or `opus` — `haiku`, the CLI
+default, is deliberately excluded: it is the known-insufficient voter this
+pin displaces, so recording it honestly still blocks qualification)
+— a passing local-mode, other-arm, unrecorded-judge, or haiku-judged run
+exits 0 but records NOT arm-qualifying (see "The flip-qualifying bar" below); a single exit-0 run
 is never the full bar. `2` = every gate passed but the run was
 `CASE_GLOB`-partial — completed, NOT arm-qualifying; CI treats any
 non-zero as red, so a partial run can never show green. `1` = anything

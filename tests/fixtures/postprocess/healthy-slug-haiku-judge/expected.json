@@ -1,0 +1,7 @@
+{
+  "exit": 0,
+  "stdout_contains": [
+    "PASS (this arm) \u2014 every case complete",
+    "is not a registered judge"
+  ]
+}

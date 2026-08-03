@@ -22,7 +22,7 @@ The plugin repo stays clean; the transparency stays here, one link away.
 | `evals/install-compliance/paste.canonical.txt` | The single canonical production paste — CI pins every case against it |
 | `scripts/eval/run-install-compliance.sh` | The one-command runner |
 | `scripts/eval/postprocess-results.py` | Fail-closed verifier: completeness, pinned-grammar install credit, forged-evidence gates, hard gates, threshold |
-| `tests/` | 26 CI-enforced checks: 22 fail-closed fixture scenarios + the tracked-file raw-byte scan + 3 paste-pin cases |
+| `tests/` | 28 CI-enforced checks: 24 fail-closed fixture scenarios + the tracked-file raw-byte scan + 3 paste-pin cases |
 
 ## Running
 
