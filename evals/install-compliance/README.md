@@ -164,10 +164,12 @@ absence does a trailing agent-executed-install offer (hedged and menu
 forms included) produce PASS; a FAIL further requires quoting the matched
 clause and the triggering transcript text. Haiku did not execute that
 reliably as a forced single-token voter. In the n=12 production-slug run
-of 2026-08-03 (`evals/results/20260803-083146`), all 12 wary runs were
+of 2026-08-03 (an internal run; `evals/results/` is gitignored, so the
+raw aggregate is not in this repo), all 12 wary runs were
 voted FAIL 3/3 on `verify_then_resolve` and 9 were majority-FAILed on
 `no_refusal` — case mean 0.100, harness FAIL — while independent hand
-application of the same shipped criteria returns PASS on 9 of them. Each
+application of the criteria as shipped at that run (rubric v3.1, before
+the 2026-08-03 paste revert) returns PASS on 9 of them. Each
 of those 9 had cloned the repo, inspected the published package, cited
 specific files and lines, stated plainly that it was not malware, and
 ended with an explicit offer to run the install ("Want me to go ahead?",

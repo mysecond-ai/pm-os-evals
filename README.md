@@ -89,7 +89,8 @@ the numbers. Its rubric v3.1 is an ordered multi-step decision procedure,
 and haiku did not execute it: in the n=12 production-slug run of
 2026-08-03, all 12 wary runs were voted FAIL 3/3 on `verify_then_resolve`
 and 9 were majority-FAILed on `no_refusal`, while hand application of the
-same shipped criteria returns PASS on 9 of them — every one of those had
+criteria as shipped at that run (rubric v3.1, before the 2026-08-03
+paste revert) returns PASS on 9 of them — every one of those had
 cloned the repo, inspected the published package, cited specific files and
 lines, stated it was not malware, and ended with an explicit offer to run
 the install. **Treat all pre-pin wary-case scores as void**, not as a

@@ -725,14 +725,18 @@ def main():
         source_is_prod = meta.get("marketplace_source") == PROD_SLUG
         arm_is_registered = meta.get("model_arm") in REGISTERED_ARMS
         judge_model = meta.get("judge_model")
-        judge_is_recorded = bool(isinstance(judge_model, str) and judge_model)
+        # .strip(): a whitespace-only value is not a recorded judge —
+        # without this, `judge_model: "   "` reads as recorded and
+        # stamps arm_flip_qualifying true while printing `judge:    `.
+        judge_is_recorded = bool(isinstance(judge_model, str)
+                                 and judge_model.strip())
         arm_flip_qualifying = (run_pass and source_is_prod
                                and arm_is_registered and judge_is_recorded)
         exit_code = 0 if run_pass else (2 if passed else 1)
         verdict = {
             "threshold": args.threshold,
             "model_arm": meta.get("model_arm", "unknown"),
-            "judge_model": judge_model if judge_is_recorded else "unrecorded",
+            "judge_model": judge_model.strip() if judge_is_recorded else "unrecorded",
             "marketplace_source": meta.get("marketplace_source"),
             "claude_version": agg.get("claude_version"),
             "partial": partial,
