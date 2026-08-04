@@ -64,7 +64,8 @@ Scenarios (why each exists — review rounds 2-3, pm-os#1; rubric v3 2026-07-31)
   healthy-slug    the arm-qualifying POSITIVE pin: identical to healthy
                   but scored in production slug mode (metadata source =
                   mysecond-ai/pm-os, traces' pinned commands to match) on
-                  the cli-default arm — exit 0 AND arm_flip_qualifying true.
+                  the cli-default arm, with judge_model recorded — exit 0
+                  AND arm_flip_qualifying true.
                   Together with healthy (local mode, exit 0 but NOT
                   arm-qualifying) this pins that a passing run outside the
                   registered slug+arm scope can never count toward the bar
@@ -88,10 +89,18 @@ Scenarios (why each exists — review rounds 2-3, pm-os#1; rubric v3 2026-07-31)
 
 Exit-code contract asserted per scenario: 0 = the run passed every gate,
 2 = passed-but-partial, 1 = failed. arm_flip_qualifying is stricter than
-exit 0: it additionally requires production slug mode on a registered arm,
-computed in the coherence assertion from each fixture's own run-metadata
-against the post-processor's pinned constants (PROD_SLUG/REGISTERED_ARMS).
-The flip bar itself needs both registered arms green.
+exit 0: it additionally requires production slug mode on a registered arm
+AND a recorded judge_model, computed in the coherence assertion from each
+fixture's own run-metadata against the post-processor's pinned constants
+(PROD_SLUG/REGISTERED_ARMS). The flip bar itself needs both registered arms
+green.
+
+JUDGE_MODEL (2026-08-03): run-metadata.json now carries judge_model, and
+healthy-real DELIBERATELY omits it — pinning that an aggregate produced
+before the judge pin still post-processes cleanly (exit 0, nothing
+fails-closed on the missing field) while printing and recording
+"unrecorded" and losing arm-qualifying. healthy and healthy-slug carry it,
+so healthy's NOT-arm-qualifying reason stays exactly the local-mode one.
 
 Each scenario is copied to a temp dir before running, so the checkout is
 never written to and relative-path resolution is exercised.
@@ -188,16 +197,24 @@ def run_scenario(src):
             verdict = json.loads(verdict_path.read_text(encoding="utf-8"))
             want_passed = expected["exit"] in (0, 2)
             # arm-qualifying = clean exit AND production slug AND registered
-            # arm — computed from the fixture's own metadata against the
-            # post-processor's pinned constants (no duplicated literals).
+            # arm AND a recorded judge_model — computed from the fixture's
+            # own metadata against the post-processor's pinned constants (no
+            # duplicated literals).
             meta_path = work / "run-metadata.json"
             try:
                 meta = json.loads(meta_path.read_text(encoding="utf-8"))
             except (OSError, json.JSONDecodeError):
                 meta = {}
-            want_arm = (expected["exit"] == 0
-                        and meta.get("marketplace_source") == pp_module().PROD_SLUG
-                        and meta.get("model_arm") in pp_module().REGISTERED_ARMS)
+            judge = meta.get("judge_model")
+            want_arm = bool(
+                expected["exit"] == 0
+                and meta.get("marketplace_source") == pp_module().PROD_SLUG
+                and meta.get("model_arm") in pp_module().REGISTERED_ARMS
+                and isinstance(judge, str)
+                # REGISTERED_JUDGES, not merely recorded: haiku is the CLI
+                # default and cannot execute the wary rubric, so recording it
+                # honestly must still block arm-qualification.
+                and judge.strip() in pp_module().REGISTERED_JUDGES)
             if verdict.get("passed") is not want_passed:
                 problems.append(
                     f"verdict passed={verdict.get('passed')} disagrees with "

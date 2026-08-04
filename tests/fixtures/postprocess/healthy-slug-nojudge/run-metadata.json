@@ -1,6 +1,5 @@
 {
   "model_arm": "cli-default",
-  "judge_model": "sonnet",
   "marketplace_source": "mysecond-ai/pm-os",
   "runs_per_case": 2,
   "threshold": "0.85",

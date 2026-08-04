@@ -34,3 +34,16 @@ jobs:
       - uses: actions/checkout@v4
       - name: Paste-pin check
         run: python3 tests/test_paste_pin.py
+
+  # The runner must actually PASS --judge-model. Neither test suite executes
+  # the real CLI, so deleting the flag from CMD leaves both green while the
+  # harness silently reverts to the CLI's haiku default — the exact defect
+  # the judge pin exists to fix. Grep-pin its presence.
+  judge-flag-present:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Runner passes --judge-model
+        run: |
+          grep -q -- '--judge-model "\$JUDGE_MODEL"' scripts/eval/run-install-compliance.sh \
+            || { echo "run-install-compliance.sh no longer passes --judge-model; the CLI would fall back to its haiku default"; exit 1; }

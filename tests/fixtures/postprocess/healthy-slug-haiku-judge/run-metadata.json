@@ -1,6 +1,6 @@
 {
   "model_arm": "cli-default",
-  "judge_model": "sonnet",
+  "judge_model": "haiku",
   "marketplace_source": "mysecond-ai/pm-os",
   "runs_per_case": 2,
   "threshold": "0.85",
