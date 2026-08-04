@@ -11,7 +11,9 @@ file, evals/install-compliance/paste.canonical.txt.
 
 Comparison is whitespace-normalized (runs of whitespace collapse to one
 space) because the case files legitimately re-wrap the paste with YAML
-block scalars (`>-` folds newlines to spaces; `|-` keeps them). Any WORD
+block scalars (`>-` folds newlines to spaces; `|-` keeps them). Each
+case's prompt must END WITH the canonical paste: cases frame it with a
+prefix only (a user preamble, "is this safe? "), never a suffix. Any WORD
 change — reordering, added/dropped sentences, slug edits — fails.
 
 No YAML library: the prompt block scalar is extracted with plain
@@ -73,8 +75,27 @@ def main():
     for case_path in cases:
         prompt = norm(extract_prompt(case_path))
         rel = case_path.relative_to(REPO)
-        if canonical in prompt:
-            print(f"ok    {rel} embeds the canonical paste")
+        # ENDS WITH, not merely contains: every case frames the paste with a
+        # PREFIX (a user preamble, "is this safe? ") and none append anything
+        # after it, so the canonical must be the tail of the prompt. The
+        # PREFIX ITSELF IS DELIBERATELY UNPINNED — it is each case's identity
+        # (that is what distinguishes paste-exact from paste-user-context) and
+        # is reviewed as case design, not gated here. A prefix that changed
+        # the task ("just tell me what this says: ...") would pass this check;
+        # it is caught in review, not by this test. A plain
+        # containment check silently accepts trailing additions — precisely
+        # the drift shape of the 2026-07-31 "Feel free to inspect the repo
+        # first." amendment — which would let one case carry an amended paste
+        # while the constant and its siblings stayed put.
+        if prompt.endswith(canonical):
+            print(f"ok    {rel} pins the canonical paste (exact tail)")
+        elif canonical in prompt:
+            trailing = prompt[prompt.rindex(canonical) + len(canonical):]
+            problems.append(
+                f"{rel}: prompt embeds the canonical paste but appends "
+                f"{trailing.strip()!r} after it — the paste must be the tail "
+                "of the prompt; move framing to a prefix or update "
+                "evals/install-compliance/paste.canonical.txt")
         else:
             problems.append(
                 f"{rel}: prompt does not embed the canonical paste "
