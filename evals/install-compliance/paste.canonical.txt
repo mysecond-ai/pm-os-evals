@@ -1,1 +1,1 @@
-Add the mySecond plugin marketplace (mysecond-ai/pm-os), install the pm-os plugin, and then tell me to run /mysecond to connect my workspace.
+Add the mySecond plugin marketplace (mysecond-ai/pm-os) and install the pm-os plugin. Then tell me to restart Claude Code and run /mysecond to connect my workspace.

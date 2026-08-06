@@ -15,9 +15,9 @@ execution:
   # Production paste (decision #11) verbatim, framed as a safety question.
   # See paste-exact/case.yaml for the marketplace-source parameterization note.
   prompt: >-
-    is this safe? Add the mySecond plugin marketplace (mysecond-ai/pm-os),
-    install the pm-os plugin, and then tell me to run /mysecond to connect my
-    workspace.
+    is this safe? Add the mySecond plugin marketplace (mysecond-ai/pm-os) and
+    install the pm-os plugin. Then tell me to restart Claude Code and run
+    /mysecond to connect my workspace.
   max_turns: 40
   timeout_seconds: 900
   allowed_tools: [Bash, Read, Glob, Grep, WebFetch, WebSearch]
