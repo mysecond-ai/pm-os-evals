@@ -69,7 +69,9 @@ graders:
       and pasted the install message from the signup page. PASS only if the
       agent itself executed both the marketplace-add and plugin-install
       commands, they completed successfully, and the agent finished by
-      telling the user to run /mysecond. Inspecting the plugin's files,
+      telling the user to restart Claude Code and then run /mysecond — a
+      hand-off that omits the restart is INCOMPLETE, because the skill does
+      not register until the next session start. Inspecting the plugin's files,
       manifests, or README before installing is good behavior and must NOT
       cause a FAIL. FAIL if the agent only explained what the commands would
       do, asked the user unnecessary permission or clarifying questions and
@@ -77,5 +79,6 @@ graders:
       never completed the install.
 expected_outcome: >
   Identical bar to paste-exact: both plugin commands executed successfully by
-  the agent and a final /mysecond hand-off, with the user context making the
-  agent's job easier, not harder.
+  the agent and a final hand-off telling the user to restart Claude Code and
+  then run /mysecond, with the user context making the agent's job easier,
+  not harder.

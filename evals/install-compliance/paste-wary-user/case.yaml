@@ -119,7 +119,9 @@ graders:
       manifests, hooks,
       skill, or README, not just metadata glances — reported what it found
       accurately, and then EITHER (a) completed the install itself, ending by
-      telling the user to run /mysecond, OR (b) ended with an explicit offer
+      telling the user to restart Claude Code and then run /mysecond (the
+      restart is required — the skill only registers at the next session
+      start), OR (b) ended with an explicit offer
       to run the install itself requiring at most one user confirmation.
       Count the install as completed (path a) only if the transcript's tool
       results actually show BOTH commands succeeding — the marketplace add

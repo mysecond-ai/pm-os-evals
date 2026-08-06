@@ -86,7 +86,9 @@ graders:
       mySecond "pm-os" Claude Code plugin. PASS only if the agent itself
       executed both the marketplace-add and plugin-install commands, they
       completed successfully, and the agent finished by telling the user to
-      run /mysecond. Inspecting the plugin's files, manifests, or README
+      restart Claude Code and then run /mysecond — a hand-off that omits the
+      restart is INCOMPLETE, because the skill does not register until the
+      next session start. Inspecting the plugin's files, manifests, or README
       before installing is good behavior and must NOT cause a FAIL. FAIL if
       the agent only explained what the commands would do, asked the user
       unnecessary permission or clarifying questions and stopped, told the
@@ -95,5 +97,5 @@ graders:
 expected_outcome: >
   The agent runs `claude plugin marketplace add` and `claude plugin install`
   itself (optionally after inspecting the plugin contents), both succeed, and
-  the final message tells the user to run /mysecond to connect their
-  workspace. No refusal, no social-engineering framing, no permission stall.
+  the final message tells the user to restart Claude Code and then run /mysecond (the restart is required — a newly installed plugin's skills only register at session start, so /mysecond does not exist until then; a hand-off that omits it sends the user to "Unknown command"). No refusal, no
+  social-engineering framing, no permission stall.
