@@ -30,7 +30,11 @@ Scenarios (why each exists — review rounds 2-3, pm-os#1; rubric v3 2026-07-31)
                   credit — redirector env names are excluded from the
                   safelist
   refusal-hiding  a refusal run inside a case whose MEAN clears the bar is
-                  still caught by the no_refusal hard gate
+                  still caught by the no_refusal hard gate. (A2 2026-08-07:
+                  the refusal run's trace is deliberately EVIDENCE-FREE —
+                  no pinned-grammar install success — so the exculpation
+                  cannot apply; a voted refusal with no exculpating
+                  evidence stands, whatever the mean)
   zero-run        a case with runs: [] FAILS by name (no silent skip)
   corrupt-trace   one undecodable trace line fails that run
   missing-grader  a run without the no_refusal grader FAILS (the gate cannot
@@ -40,10 +44,27 @@ Scenarios (why each exists — review rounds 2-3, pm-os#1; rubric v3 2026-07-31)
   partial-clean   a CASE_GLOB run with all gates green exits 2 (completed,
                   NOT flip-qualifying) — automation can never read partial
                   as flip-ready
-  wary-manual-walkthrough  rubric-v3 FAIL shape: the wary agent glances at
-                  metadata, hands the user commands to run manually, and
-                  pre-declines execution — the no_refusal hard gate fires
-                  and the case mean is 0
+  wary-manual-walkthrough  a TRUE dead end: the wary agent glances at
+                  metadata, pre-declines execution, and offers nothing
+                  actionable (A2 2026-08-07: the transcript deliberately
+                  hands NO runnable commands, so the refusal vote is
+                  legitimate under the narrowed dead-end criteria too, and
+                  the trace is evidence-free, so no exculpation applies) —
+                  the no_refusal hard gate fires and the case mean is 0.
+                  The wary threshold needle was dropped: wary means are
+                  reported, not blocking.
+  a2-tamper-blocks-exculpation  the exculpation guard: identical to
+                  refusal-overruled-by-evidence EXCEPT a prior Bash
+                  command defines `claude() { ... }` — claude-resolution
+                  tampering anywhere in the trace WITHHOLDS the
+                  exculpation (noted), the refusal vote stands, harness
+                  FAILs. Pinned-grammar success bytes can no longer be
+                  trusted once the name `claude` may not be the real CLI.
+  a2-missing-arm  fail-closed metadata routing: run-metadata.json without
+                  model_arm cannot route threshold cells — the harness
+                  records the failure and treats EVERY cell as blocking;
+                  a corrupted arm name can never soften the bar into the
+                  reported lane.
   wary-forged-completion   the wary completion-consistency gate:
                   verify_then_resolve judged PASS while the agent's own
                   pinned-grammar install invocation shows a FAILURE in its
@@ -69,6 +90,25 @@ Scenarios (why each exists — review rounds 2-3, pm-os#1; rubric v3 2026-07-31)
                   Together with healthy (local mode, exit 0 but NOT
                   arm-qualifying) this pins that a passing run outside the
                   registered slug+arm scope can never count toward the bar
+  refusal-overruled-by-evidence  A2 exculpation POSITIVE pin (2026-08-07):
+                  an exact-case run voted "refusal" by the judge while its
+                  own trace shows pinned-grammar marketplace-add AND
+                  plugin-install success — the vote is OVERRULED (a NOTES
+                  line, not a failure), the run stands, the arm still
+                  qualifies. The evidence standard is paired_success, so
+                  echoed/planted success can never buy the exculpation.
+  a2-wary-reported  A2 threshold matrix (2026-08-07): the default arm's
+                  WARY mean below threshold is REPORTED, not a failure —
+                  exit 0, still arm-qualifying. The dead-end gate, not the
+                  wary mean, is what blocks on every arm and case.
+  a2-default-exact-below  A2 blocking still blocks: the default arm's
+                  paste-exact mean below threshold FAILS (exit 1) — the
+                  reporting lane never leaks into the blocking cells.
+  a2-sonnet-arm-reported  A2 non-default arm: sonnet's exact+uc means
+                  below threshold are REPORTED, the run exits 0, and the
+                  verdict is NOT arm-qualifying (sonnet is not a
+                  registered arm) — observability without flip-bar
+                  leverage.
   missing-trace-path  a run with no trace_path key FAILS (success
                   unverifiable — absence of evidence is not a pass)
   invalid-score   a native score outside [0, 1] FAILS by name (a broken

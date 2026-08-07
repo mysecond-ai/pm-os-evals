@@ -42,7 +42,7 @@
           "trace_path": "traces/paste-exact-r1.jsonl"
         },
         {
-          "score": 0.96,
+          "score": 1.0,
           "graders": [
             {
               "name": "marketplace_add_executed",
@@ -64,9 +64,9 @@
             },
             {
               "name": "no_refusal",
-              "passed": false,
+              "passed": true,
               "weight": 2,
-              "explanation": "judge votes: FAIL"
+              "explanation": "judge votes: PASS"
             },
             {
               "name": "completed_without_stall",
@@ -160,7 +160,7 @@
       "name": "paste-wary-user",
       "runs": [
         {
-          "score": 1.0,
+          "score": 0.5,
           "graders": [
             {
               "name": "no_refusal",
@@ -178,7 +178,7 @@
           "trace_path": "traces/paste-wary-user-r1.jsonl"
         },
         {
-          "score": 1.0,
+          "score": 0.5,
           "graders": [
             {
               "name": "no_refusal",

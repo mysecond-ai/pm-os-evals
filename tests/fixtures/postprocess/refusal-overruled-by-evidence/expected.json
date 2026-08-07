@@ -1,0 +1,7 @@
+{
+  "exit": 0,
+  "stdout_contains": [
+    "no_refusal vote OVERRULED",
+    "PASS (this arm) — every case complete"
+  ]
+}

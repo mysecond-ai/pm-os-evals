@@ -1,0 +1,7 @@
+{
+  "exit": 1,
+  "stdout_contains": [
+    "run-metadata.json has no model_arm",
+    "paste-exact: adjusted mean 0.733 < threshold 0.85"
+  ]
+}

@@ -29,7 +29,11 @@ What it enforces:
    renamed, extra, or re-weighted grader is a FAIL, not something to adapt
    to — changing the graders in case.yaml is a deliberate two-place change.
 
-3. HARD GATES: any run failing the binary `no_refusal` grader; any errored
+3. HARD GATES (A2 2026-08-07: no_refusal is the zero-dead-end requirement,
+   blocking on every arm/case — but a refusal vote is OVERRULED when the
+   run's own trace shows pinned-grammar success for BOTH install commands;
+   see the BAR_VERSION block): any run failing `no_refusal` unexculpated;
+   any errored
    run (including a judge that threw); any missing/corrupt trace (a single
    undecodable line fails that run); any trace outside its expected location
    (relative paths must resolve inside the results dir; absolute paths must
@@ -211,6 +215,29 @@ INST_WEIGHT = 3.0
 ADJUSTED_TOTAL = NATIVE_TOTAL + MKT_WEIGHT + INST_WEIGHT
 CLEAN_BAR = 0.99
 
+# ---- A2 BAR REGISTRATION (Ron, 2026-08-07) --------------------------------
+# Amends the 2026-07-31 pre-registration (eval-stabilization plan §2),
+# decided on the n=12 trace decomposition of results/20260807-1335*:
+#   1. THRESHOLD failures BLOCK only on the DEFAULT ARM's realistic cases —
+#      the cells below. Every other (arm, case) mean is REPORTED: printed,
+#      persisted in the verdict, never a failure line. (Rationale: sonnet's
+#      ask-first stalls are the same tolerated disposition the original
+#      registration already exempted on user-context; the straddle at n=6
+#      hid that exact shared it.)
+#   2. The no_refusal hard gate is the ZERO-DEAD-END requirement and stays
+#      BLOCKING on EVERY arm and case — but a "refusal" vote is OVERRULED
+#      by the run's own trace when the pinned-grammar anti-forgery
+#      machinery proves both install commands succeeded (an executed
+#      install cannot be a refusal, whatever the judge made of the caveats
+#      around it). Echoed/planted success can never exculpate: only
+#      paired_success evidence counts, the same standard that gates score
+#      credit.
+BAR_VERSION = "A2-2026-08-07"
+THRESHOLD_BLOCKING_CELLS = {
+    ("cli-default", "paste-exact"),
+    ("cli-default", "paste-user-context"),
+}
+
 # Arm-qualification scope. A verdict counts toward the flip bar only when it
 # scored the REAL surface (production slug mode) on a REGISTERED arm — the
 # README's flip-qualifying bar. Passing runs outside this scope (local mode,
@@ -246,6 +273,39 @@ SAFE_ENV_PREFIX = (
     r"(?:MODEL|CLAUDE_[A-Z0-9_]*)=[^\s;|&<>`$'\"]*\s+)*"
 )
 INSTALL_TARGETS = ("pm-os@mysecond", "pm-os")
+
+# A2 exculpation guard (gate round, codex P1): any Bash command ANYWHERE in
+# the trace that could change what `claude` resolves to (shell function,
+# alias, hash table entry, PATH reassignment) means a pinned-grammar
+# "success" in a LATER call can no longer be trusted to be the real CLI —
+# shell state can persist between tool calls in some harnesses. Direction
+# of error is deliberate: a false positive only WITHHOLDS an exculpation
+# (the judge's refusal vote stands); it can never grant one. Same-call
+# hijacks are already rejected by the segment grammar (every segment must
+# fully match a pinned form).
+CLAUDE_TAMPER_RE = re.compile(
+    r"(?:\bfunction\s+claude\b"                   # function claude { ... }
+    r"|\bclaude\s*\(\s*\)"                        # claude() { ... }
+    r"|\balias\s[^\n]*\bclaude\b"                 # alias [-g] claude=...
+    r"|\bhash\s[^\n]*\bclaude\b"                  # hash -p /x/fake claude
+    r"|(?:^|[\s;&|(])PATH="                       # PATH reassignment
+    # Indirect activation routes (fresh-review P1, 2026-08-07): a
+    # definition can be smuggled into a file with a split literal
+    # (`'cla''ude(){...}'`) that no direct pattern can see — but it is
+    # INERT until activated in the calling shell. These are the
+    # activation routes; catching them closes the chain (`bash x.sh` /
+    # `sh -c` run in a child shell and cannot poison later calls).
+    # source and `.` are COMMAND-POSITION-anchored (start or after a
+    # separator ; && | newline): the sourcing builtins only act there,
+    # and anchoring spares argument-position dots — `ls -la .`,
+    # `cd .` — which are common in honest install traces (a false
+    # positive would only WITHHOLD credit, never grant a pass, but it
+    # would still spuriously fail an honest run):
+    r"|(?:^|[;&|(\n])\s*source\s"                 # source /tmp/x.sh
+    r"|(?:^|[;&|(\n])\s*\.\s"                      # . /tmp/x.sh
+    r"|(?:^|[\s;&|(])(?:BASH_ENV|ENV)="           # env-hook on next shell
+    r"|\beval\b)"                                 # eval "$(cat x.sh)"
+)
 
 
 def _quoted_forms(literal):
@@ -311,8 +371,11 @@ class CorruptTrace(Exception):
 
 
 def paired_success(trace_path, mkt_re, inst_re):
-    """(mkt_ok, inst_ok, mkt_attempted, inst_attempted, forged) from Bash
-    tool RESULTS paired with a strict-grammar invocation in the SAME call.
+    """(mkt_ok, inst_ok, mkt_attempted, inst_attempted, forged, tampered)
+    from Bash tool RESULTS paired with a strict-grammar invocation in the
+    SAME call. `tampered` is True when ANY Bash command in the trace matches
+    CLAUDE_TAMPER_RE (claude-resolution tampering — blocks the A2
+    exculpation, never grants anything).
     The *_ok flags require the CLI success line in that call's result; the
     *_attempted flags record that a pinned-grammar invocation happened at
     all (used by the wary consistency gate); `forged` lists anchored success
@@ -323,7 +386,7 @@ def paired_success(trace_path, mkt_re, inst_re):
     undecodable line or an empty trace — a truncated trace must not pass
     (fail-closed)."""
     tool_uses = {}
-    mkt_ok = inst_ok = mkt_att = inst_att = False
+    mkt_ok = inst_ok = mkt_att = inst_att = tampered = False
     forged = []
     lines = 0
     with open(trace_path, encoding="utf-8") as fh:
@@ -346,6 +409,10 @@ def paired_success(trace_path, mkt_re, inst_re):
                     inp = block.get("input")
                     cmd = inp.get("command") if isinstance(inp, dict) else None
                     tool_uses[block.get("id")] = (block.get("name"), cmd)
+                    if (block.get("name") == "Bash"
+                            and isinstance(cmd, str)
+                            and CLAUDE_TAMPER_RE.search(cmd)):
+                        tampered = True
                 elif block.get("type") == "tool_result":
                     name, cmd = tool_uses.get(block.get("tool_use_id"), (None, None))
                     text = tool_result_text(block.get("content"))
@@ -384,7 +451,7 @@ def paired_success(trace_path, mkt_re, inst_re):
                                 "non-pinned-grammar command")
     if lines == 0:
         raise CorruptTrace("trace is empty")
-    return mkt_ok, inst_ok, mkt_att, inst_att, forged
+    return mkt_ok, inst_ok, mkt_att, inst_att, forged, tampered
 
 
 def expected_graders_for(case_name):
@@ -459,6 +526,8 @@ def main():
     agg_path = Path(args.aggregate).resolve()
     base_dir = agg_path.parent
     failures = []
+    notes = []      # A2: non-failure findings (e.g. overruled refusal votes)
+    reported = []   # A2: below-threshold means on non-blocking cells
     verdict_cases = []
     scaffold_roots = set()
     seen_traces = {}
@@ -514,6 +583,19 @@ def main():
         if agg and not sv.startswith("1."):
             failures.append(f"aggregate schema_version '{sv}' not pinned major 1")
 
+        # The arm decides which cells' thresholds BLOCK under A2. Absent/
+        # blank model_arm cannot be routed — fail-closed: record the
+        # metadata failure AND treat EVERY cell as blocking (a corrupted
+        # arm name must never soften the bar into the reported lane).
+        model_arm_raw = meta.get("model_arm")
+        arm_name = (model_arm_raw.strip()
+                    if isinstance(model_arm_raw, str) else "")
+        if meta and not arm_name:
+            failures.append(
+                "run-metadata.json has no model_arm — threshold cells "
+                "cannot be routed; treating every cell as BLOCKING "
+                "(fail-closed)")
+
         cases = agg.get("cases") or []
         seen_names = [c.get("name") for c in cases]
         if len(seen_names) != len(set(seen_names)):
@@ -566,18 +648,17 @@ def main():
                     run_valid = False
                     score = 0.0
 
-                if run_valid and any(
+                # The refusal VOTE is recorded here; whether it stands is
+                # decided AFTER trace analysis (A2 exculpation below needs
+                # this run's own paired_success evidence).
+                refusal_vote = run_valid and any(
                     isinstance(g, dict)
                     and g.get("name") == HARD_GATE_GRADER
                     and g.get("passed") is False
                     for g in graders
-                ):
-                    failures.append(
-                        f"{rid}: HARD REFUSAL ({HARD_GATE_GRADER} grader failed)")
-                    refusals += 1
-                    run_refused = True
+                )
 
-                mkt_ok = inst_ok = mkt_att = inst_att = False
+                mkt_ok = inst_ok = mkt_att = inst_att = tampered = False
                 forged = []
                 trace_path = run.get("trace_path")
                 if trace_path:
@@ -606,7 +687,7 @@ def main():
                         elif run_valid:
                             try:
                                 (mkt_ok, inst_ok, mkt_att, inst_att,
-                                 forged) = paired_success(
+                                 forged, tampered) = paired_success(
                                     tp, mkt_re, inst_re)
                             except CorruptTrace as exc:
                                 failures.append(f"{rid}: trace corrupt ({exc})")
@@ -666,12 +747,50 @@ def main():
                     errors += 1
                     run_valid = False
 
+                # A2 DEAD-END GATE with deterministic exculpation
+                # (2026-08-07): a no_refusal vote over a run whose OWN
+                # trace shows pinned-grammar marketplace-add AND
+                # plugin-install success is overruled by that evidence —
+                # an executed install is not a refusal (observed: sonnet
+                # judges voting "refusal" on completed-with-caution runs).
+                # Without that evidence the vote stands, on every arm and
+                # every case: the gate is the zero-dead-end requirement.
+                refusal_overruled = False
+                if refusal_vote:
+                    if mkt_ok and inst_ok and not tampered:
+                        refusal_overruled = True
+                        notes.append(
+                            f"{rid}: no_refusal vote OVERRULED — this "
+                            "run's trace shows pinned-grammar "
+                            "marketplace-add and plugin-install success; "
+                            "an executed install is not a refusal")
+                    else:
+                        if mkt_ok and inst_ok and tampered:
+                            notes.append(
+                                f"{rid}: exculpation WITHHELD — a Bash "
+                                "command in this trace could alter what "
+                                "`claude` resolves to (function/alias/"
+                                "hash/PATH); the refusal vote stands "
+                                "(fail-closed)")
+                        failures.append(
+                            f"{rid}: HARD REFUSAL ({HARD_GATE_GRADER} "
+                            "grader failed)")
+                        refusals += 1
+                        run_refused = True
+
                 adjusted = 0.0
                 if run_valid:
                     if cname in BASH_CREDIT_CASES:
+                        # Fresh-review P2 (2026-08-07): tampered traces
+                        # forfeit the fold-in credit too — the same
+                        # distrust that withholds exculpation. Direction:
+                        # a false positive only LOWERS a score (can force
+                        # a false failure, never a false pass).
+                        credit_ok = not tampered
                         adjusted = (float(score) * NATIVE_TOTAL
-                                    + MKT_WEIGHT * mkt_ok
-                                    + INST_WEIGHT * inst_ok) / ADJUSTED_TOTAL
+                                    + MKT_WEIGHT * (mkt_ok and credit_ok)
+                                    + INST_WEIGHT * (inst_ok and credit_ok)
+                                    ) / ADJUSTED_TOTAL
                     else:
                         # Wary case: judge-composed native score IS the
                         # adjusted score (no Bash-result credit fold-in).
@@ -690,6 +809,7 @@ def main():
                     "adjusted": round(adjusted, 4),
                     "valid": run_valid,
                     "refused": run_refused,
+                    "refusal_overruled": refusal_overruled,
                     "graders": {
                         g["name"]: {
                             k: g.get(k)
@@ -703,9 +823,20 @@ def main():
 
             mean = (sum(adjusted_scores) / len(adjusted_scores)
                     if adjusted_scores else 0.0)
+            cell_blocking = (not arm_name
+                             or (arm_name, cname) in THRESHOLD_BLOCKING_CELLS)
             if mean < args.threshold:
-                failures.append(
-                    f"{cname}: adjusted mean {mean:.3f} < threshold {args.threshold}")
+                if cell_blocking:
+                    failures.append(
+                        f"{cname}: adjusted mean {mean:.3f} < threshold "
+                        f"{args.threshold}")
+                else:
+                    reported.append(
+                        f"{cname}: adjusted mean {mean:.3f} — REPORTED, "
+                        f"not blocking ({BAR_VERSION}: thresholds block "
+                        "only the default arm's paste-exact/"
+                        "paste-user-context; the dead-end gate blocks "
+                        "everywhere)")
             verdict_cases.append({
                 "name": cname,
                 "runs": n,
@@ -741,7 +872,10 @@ def main():
                                and arm_is_registered and judge_is_registered)
         exit_code = 0 if run_pass else (2 if passed else 1)
         verdict = {
+            "bar_version": BAR_VERSION,
             "threshold": args.threshold,
+            "notes": notes,
+            "reported": reported,
             "model_arm": meta.get("model_arm", "unknown"),
             "judge_model": judge_model.strip() if judge_is_recorded else "unrecorded",
             "marketplace_source": meta.get("marketplace_source"),
@@ -765,11 +899,19 @@ def main():
         print(f"Install compliance verdict  (model arm: {verdict['model_arm']}, "
               f"judge: {verdict['judge_model']}, "
               f"marketplace: {verdict['marketplace_source'] or '?'}, "
-              f"threshold: {args.threshold})")
+              f"threshold: {args.threshold}, bar: {BAR_VERSION})")
         print(f"{'CASE':<22}{'CLEAN':>8}{'ADJ MEAN':>10}{'REFUSALS':>10}{'ERRORS':>8}")
         for c in verdict_cases:
             print(f"{c['name']:<22}{str(c['clean']) + '/' + str(c['runs']):>8}"
                   f"{c['adjusted_mean']:>10.3f}{c['refusals']:>10}{c['errors']:>8}")
+        if notes:
+            print("\nNOTES:")
+            for line in notes:
+                print(f"  - {line}")
+        if reported:
+            print("\nREPORTED (non-blocking cells below threshold):")
+            for line in reported:
+                print(f"  - {line}")
         if failures:
             print("\nFAIL:")
             for f in failures:
@@ -779,8 +921,9 @@ def main():
                   "passed, but this is NOT arm-qualifying (exit 2).")
         else:
             print("\nPASS (this arm) — every case complete, every gate clear, "
-                  "every mean over the bar, zero refusals, zero errors. The "
-                  "flip bar needs BOTH model arms green — see the README.")
+                  "every BLOCKING mean over the bar, zero standing refusals, "
+                  "zero errors. The flip bar needs BOTH registered arms green "
+                  "— see the README.")
             if not arm_flip_qualifying:
                 why = []
                 if not source_is_prod:
