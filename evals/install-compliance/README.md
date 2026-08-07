@@ -9,8 +9,13 @@ verify-then-resolve — accurate verification, install one confirmation away.)
 A brand-new customer's first contact with mySecond is pasting one prose
 message (decision #11) into Claude Code:
 
-> Add the mySecond plugin marketplace (mysecond-ai/pm-os), install the pm-os
-> plugin, and then tell me to run /mysecond to connect my workspace.
+> Add the mySecond plugin marketplace (mysecond-ai/pm-os) and install the
+> pm-os plugin. Then tell me to restart Claude Code and run /mysecond to
+> connect my workspace.
+
+The restart is in the paste because Claude Code registers a newly installed
+plugin's skills only at session start: without it the closing instruction
+lands on "Unknown command: /mysecond". The graders below require it.
 
 Every claim in this suite's rubrics is meant to be exactly true when read by
 the installing agents themselves (they do read it — this file is a public
