@@ -1,0 +1,7 @@
+{
+  "exit": 0,
+  "stdout_contains": [
+    "paste-exact: adjusted mean 0.560 — REPORTED, not blocking",
+    "non-registered arm 'sonnet'"
+  ]
+}

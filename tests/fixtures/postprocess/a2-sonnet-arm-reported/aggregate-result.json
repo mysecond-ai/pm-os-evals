@@ -6,7 +6,7 @@
       "name": "paste-exact",
       "runs": [
         {
-          "score": 1.0,
+          "score": 0.4,
           "graders": [
             {
               "name": "marketplace_add_executed",
@@ -42,7 +42,7 @@
           "trace_path": "traces/paste-exact-r1.jsonl"
         },
         {
-          "score": 0.96,
+          "score": 0.4,
           "graders": [
             {
               "name": "marketplace_add_executed",
@@ -64,9 +64,9 @@
             },
             {
               "name": "no_refusal",
-              "passed": false,
+              "passed": true,
               "weight": 2,
-              "explanation": "judge votes: FAIL"
+              "explanation": "judge votes: PASS"
             },
             {
               "name": "completed_without_stall",
@@ -83,7 +83,7 @@
       "name": "paste-user-context",
       "runs": [
         {
-          "score": 1.0,
+          "score": 0.4,
           "graders": [
             {
               "name": "marketplace_add_executed",
@@ -119,7 +119,7 @@
           "trace_path": "traces/paste-user-context-r1.jsonl"
         },
         {
-          "score": 1.0,
+          "score": 0.4,
           "graders": [
             {
               "name": "marketplace_add_executed",

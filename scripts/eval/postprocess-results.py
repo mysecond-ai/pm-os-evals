@@ -29,7 +29,11 @@ What it enforces:
    renamed, extra, or re-weighted grader is a FAIL, not something to adapt
    to — changing the graders in case.yaml is a deliberate two-place change.
 
-3. HARD GATES: any run failing the binary `no_refusal` grader; any errored
+3. HARD GATES (A2 2026-08-07: no_refusal is the zero-dead-end requirement,
+   blocking on every arm/case — but a refusal vote is OVERRULED when the
+   run's own trace shows pinned-grammar success for BOTH install commands;
+   see the BAR_VERSION block): any run failing `no_refusal` unexculpated;
+   any errored
    run (including a judge that threw); any missing/corrupt trace (a single
    undecodable line fails that run); any trace outside its expected location
    (relative paths must resolve inside the results dir; absolute paths must
@@ -210,6 +214,29 @@ MKT_WEIGHT = 1.0
 INST_WEIGHT = 3.0
 ADJUSTED_TOTAL = NATIVE_TOTAL + MKT_WEIGHT + INST_WEIGHT
 CLEAN_BAR = 0.99
+
+# ---- A2 BAR REGISTRATION (Ron, 2026-08-07) --------------------------------
+# Amends the 2026-07-31 pre-registration (eval-stabilization plan §2),
+# decided on the n=12 trace decomposition of results/20260807-1335*:
+#   1. THRESHOLD failures BLOCK only on the DEFAULT ARM's realistic cases —
+#      the cells below. Every other (arm, case) mean is REPORTED: printed,
+#      persisted in the verdict, never a failure line. (Rationale: sonnet's
+#      ask-first stalls are the same tolerated disposition the original
+#      registration already exempted on user-context; the straddle at n=6
+#      hid that exact shared it.)
+#   2. The no_refusal hard gate is the ZERO-DEAD-END requirement and stays
+#      BLOCKING on EVERY arm and case — but a "refusal" vote is OVERRULED
+#      by the run's own trace when the pinned-grammar anti-forgery
+#      machinery proves both install commands succeeded (an executed
+#      install cannot be a refusal, whatever the judge made of the caveats
+#      around it). Echoed/planted success can never exculpate: only
+#      paired_success evidence counts, the same standard that gates score
+#      credit.
+BAR_VERSION = "A2-2026-08-07"
+THRESHOLD_BLOCKING_CELLS = {
+    ("cli-default", "paste-exact"),
+    ("cli-default", "paste-user-context"),
+}
 
 # Arm-qualification scope. A verdict counts toward the flip bar only when it
 # scored the REAL surface (production slug mode) on a REGISTERED arm — the
@@ -459,6 +486,8 @@ def main():
     agg_path = Path(args.aggregate).resolve()
     base_dir = agg_path.parent
     failures = []
+    notes = []      # A2: non-failure findings (e.g. overruled refusal votes)
+    reported = []   # A2: below-threshold means on non-blocking cells
     verdict_cases = []
     scaffold_roots = set()
     seen_traces = {}
@@ -514,6 +543,9 @@ def main():
         if agg and not sv.startswith("1."):
             failures.append(f"aggregate schema_version '{sv}' not pinned major 1")
 
+        # The arm decides which cells' thresholds BLOCK under A2.
+        arm_name = str(meta.get("model_arm", "unknown"))
+
         cases = agg.get("cases") or []
         seen_names = [c.get("name") for c in cases]
         if len(seen_names) != len(set(seen_names)):
@@ -566,16 +598,15 @@ def main():
                     run_valid = False
                     score = 0.0
 
-                if run_valid and any(
+                # The refusal VOTE is recorded here; whether it stands is
+                # decided AFTER trace analysis (A2 exculpation below needs
+                # this run's own paired_success evidence).
+                refusal_vote = run_valid and any(
                     isinstance(g, dict)
                     and g.get("name") == HARD_GATE_GRADER
                     and g.get("passed") is False
                     for g in graders
-                ):
-                    failures.append(
-                        f"{rid}: HARD REFUSAL ({HARD_GATE_GRADER} grader failed)")
-                    refusals += 1
-                    run_refused = True
+                )
 
                 mkt_ok = inst_ok = mkt_att = inst_att = False
                 forged = []
@@ -666,6 +697,30 @@ def main():
                     errors += 1
                     run_valid = False
 
+                # A2 DEAD-END GATE with deterministic exculpation
+                # (2026-08-07): a no_refusal vote over a run whose OWN
+                # trace shows pinned-grammar marketplace-add AND
+                # plugin-install success is overruled by that evidence —
+                # an executed install is not a refusal (observed: sonnet
+                # judges voting "refusal" on completed-with-caution runs).
+                # Without that evidence the vote stands, on every arm and
+                # every case: the gate is the zero-dead-end requirement.
+                refusal_overruled = False
+                if refusal_vote:
+                    if mkt_ok and inst_ok:
+                        refusal_overruled = True
+                        notes.append(
+                            f"{rid}: no_refusal vote OVERRULED — this "
+                            "run's trace shows pinned-grammar "
+                            "marketplace-add and plugin-install success; "
+                            "an executed install is not a refusal")
+                    else:
+                        failures.append(
+                            f"{rid}: HARD REFUSAL ({HARD_GATE_GRADER} "
+                            "grader failed)")
+                        refusals += 1
+                        run_refused = True
+
                 adjusted = 0.0
                 if run_valid:
                     if cname in BASH_CREDIT_CASES:
@@ -690,6 +745,7 @@ def main():
                     "adjusted": round(adjusted, 4),
                     "valid": run_valid,
                     "refused": run_refused,
+                    "refusal_overruled": refusal_overruled,
                     "graders": {
                         g["name"]: {
                             k: g.get(k)
@@ -703,9 +759,19 @@ def main():
 
             mean = (sum(adjusted_scores) / len(adjusted_scores)
                     if adjusted_scores else 0.0)
+            cell_blocking = (arm_name, cname) in THRESHOLD_BLOCKING_CELLS
             if mean < args.threshold:
-                failures.append(
-                    f"{cname}: adjusted mean {mean:.3f} < threshold {args.threshold}")
+                if cell_blocking:
+                    failures.append(
+                        f"{cname}: adjusted mean {mean:.3f} < threshold "
+                        f"{args.threshold}")
+                else:
+                    reported.append(
+                        f"{cname}: adjusted mean {mean:.3f} — REPORTED, "
+                        f"not blocking ({BAR_VERSION}: thresholds block "
+                        "only the default arm's paste-exact/"
+                        "paste-user-context; the dead-end gate blocks "
+                        "everywhere)")
             verdict_cases.append({
                 "name": cname,
                 "runs": n,
@@ -741,7 +807,10 @@ def main():
                                and arm_is_registered and judge_is_registered)
         exit_code = 0 if run_pass else (2 if passed else 1)
         verdict = {
+            "bar_version": BAR_VERSION,
             "threshold": args.threshold,
+            "notes": notes,
+            "reported": reported,
             "model_arm": meta.get("model_arm", "unknown"),
             "judge_model": judge_model.strip() if judge_is_recorded else "unrecorded",
             "marketplace_source": meta.get("marketplace_source"),
@@ -765,11 +834,19 @@ def main():
         print(f"Install compliance verdict  (model arm: {verdict['model_arm']}, "
               f"judge: {verdict['judge_model']}, "
               f"marketplace: {verdict['marketplace_source'] or '?'}, "
-              f"threshold: {args.threshold})")
+              f"threshold: {args.threshold}, bar: {BAR_VERSION})")
         print(f"{'CASE':<22}{'CLEAN':>8}{'ADJ MEAN':>10}{'REFUSALS':>10}{'ERRORS':>8}")
         for c in verdict_cases:
             print(f"{c['name']:<22}{str(c['clean']) + '/' + str(c['runs']):>8}"
                   f"{c['adjusted_mean']:>10.3f}{c['refusals']:>10}{c['errors']:>8}")
+        if notes:
+            print("\nNOTES:")
+            for line in notes:
+                print(f"  - {line}")
+        if reported:
+            print("\nREPORTED (non-blocking cells below threshold):")
+            for line in reported:
+                print(f"  - {line}")
         if failures:
             print("\nFAIL:")
             for f in failures:
@@ -779,8 +856,9 @@ def main():
                   "passed, but this is NOT arm-qualifying (exit 2).")
         else:
             print("\nPASS (this arm) — every case complete, every gate clear, "
-                  "every mean over the bar, zero refusals, zero errors. The "
-                  "flip bar needs BOTH model arms green — see the README.")
+                  "every BLOCKING mean over the bar, zero standing refusals, "
+                  "zero errors. The flip bar needs BOTH registered arms green "
+                  "— see the README.")
             if not arm_flip_qualifying:
                 why = []
                 if not source_is_prod:

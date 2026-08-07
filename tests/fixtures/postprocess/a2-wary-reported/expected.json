@@ -1,0 +1,7 @@
+{
+  "exit": 0,
+  "stdout_contains": [
+    "paste-wary-user: adjusted mean 0.500 — REPORTED, not blocking",
+    "PASS (this arm) — every case complete"
+  ]
+}
