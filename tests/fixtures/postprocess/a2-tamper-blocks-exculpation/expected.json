@@ -1,0 +1,7 @@
+{
+  "exit": 1,
+  "stdout_contains": [
+    "exculpation WITHHELD",
+    "HARD REFUSAL (no_refusal grader failed)"
+  ]
+}

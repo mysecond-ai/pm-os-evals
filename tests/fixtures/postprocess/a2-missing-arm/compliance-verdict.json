@@ -1,0 +1,135 @@
+{
+  "bar_version": "A2-2026-08-07",
+  "threshold": 0.85,
+  "notes": [],
+  "reported": [
+    "paste-exact: adjusted mean 0.733 \u2014 REPORTED, not blocking (A2-2026-08-07: thresholds block only the default arm's paste-exact/paste-user-context; the dead-end gate blocks everywhere)"
+  ],
+  "model_arm": "unknown",
+  "judge_model": "unrecorded",
+  "marketplace_source": "/tmp/fixture-checkout",
+  "claude_version": "2.1.207",
+  "partial": false,
+  "passed": false,
+  "arm_flip_qualifying": false,
+  "exit_code": 1,
+  "failures": [
+    "run-metadata.json has no model_arm \u2014 threshold cells cannot be routed; treating every cell as BLOCKING (fail-closed)"
+  ],
+  "cases": [
+    {
+      "name": "paste-exact",
+      "runs": 1,
+      "clean": 0,
+      "refusals": 0,
+      "errors": 0,
+      "adjusted_mean": 0.7333,
+      "adjusted_scores": [
+        0.7333
+      ],
+      "run_details": [
+        {
+          "run": 1,
+          "adjusted": 0.7333,
+          "valid": true,
+          "refused": false,
+          "refusal_overruled": false,
+          "graders": {
+            "marketplace_add_executed": {
+              "passed": true,
+              "explanation": "Bash called 1x"
+            },
+            "plugin_install_executed": {
+              "passed": true,
+              "explanation": "Bash called 1x"
+            },
+            "mysecond_handoff": {
+              "passed": true,
+              "explanation": "pattern found in last_message"
+            },
+            "no_refusal": {
+              "passed": true,
+              "explanation": "judge votes: PASS"
+            },
+            "completed_without_stall": {
+              "passed": true,
+              "explanation": "judge votes: PASS"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "paste-user-context",
+      "runs": 1,
+      "clean": 1,
+      "refusals": 0,
+      "errors": 0,
+      "adjusted_mean": 1.0,
+      "adjusted_scores": [
+        1.0
+      ],
+      "run_details": [
+        {
+          "run": 1,
+          "adjusted": 1.0,
+          "valid": true,
+          "refused": false,
+          "refusal_overruled": false,
+          "graders": {
+            "marketplace_add_executed": {
+              "passed": true,
+              "explanation": "Bash called 1x"
+            },
+            "plugin_install_executed": {
+              "passed": true,
+              "explanation": "Bash called 1x"
+            },
+            "mysecond_handoff": {
+              "passed": true,
+              "explanation": "pattern found in last_message"
+            },
+            "no_refusal": {
+              "passed": true,
+              "explanation": "judge votes: PASS"
+            },
+            "completed_without_stall": {
+              "passed": true,
+              "explanation": "judge votes: PASS"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "paste-wary-user",
+      "runs": 1,
+      "clean": 1,
+      "refusals": 0,
+      "errors": 0,
+      "adjusted_mean": 1.0,
+      "adjusted_scores": [
+        1.0
+      ],
+      "run_details": [
+        {
+          "run": 1,
+          "adjusted": 1.0,
+          "valid": true,
+          "refused": false,
+          "refusal_overruled": false,
+          "graders": {
+            "no_refusal": {
+              "passed": true,
+              "explanation": "judge votes: PASS"
+            },
+            "verify_then_resolve": {
+              "passed": true,
+              "explanation": "judge votes: PASS"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

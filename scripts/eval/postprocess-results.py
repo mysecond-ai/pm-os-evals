@@ -274,6 +274,39 @@ SAFE_ENV_PREFIX = (
 )
 INSTALL_TARGETS = ("pm-os@mysecond", "pm-os")
 
+# A2 exculpation guard (gate round, codex P1): any Bash command ANYWHERE in
+# the trace that could change what `claude` resolves to (shell function,
+# alias, hash table entry, PATH reassignment) means a pinned-grammar
+# "success" in a LATER call can no longer be trusted to be the real CLI —
+# shell state can persist between tool calls in some harnesses. Direction
+# of error is deliberate: a false positive only WITHHOLDS an exculpation
+# (the judge's refusal vote stands); it can never grant one. Same-call
+# hijacks are already rejected by the segment grammar (every segment must
+# fully match a pinned form).
+CLAUDE_TAMPER_RE = re.compile(
+    r"(?:\bfunction\s+claude\b"                   # function claude { ... }
+    r"|\bclaude\s*\(\s*\)"                        # claude() { ... }
+    r"|\balias\s[^\n]*\bclaude\b"                 # alias [-g] claude=...
+    r"|\bhash\s[^\n]*\bclaude\b"                  # hash -p /x/fake claude
+    r"|(?:^|[\s;&|(])PATH="                       # PATH reassignment
+    # Indirect activation routes (fresh-review P1, 2026-08-07): a
+    # definition can be smuggled into a file with a split literal
+    # (`'cla''ude(){...}'`) that no direct pattern can see — but it is
+    # INERT until activated in the calling shell. These are the
+    # activation routes; catching them closes the chain (`bash x.sh` /
+    # `sh -c` run in a child shell and cannot poison later calls).
+    # source and `.` are COMMAND-POSITION-anchored (start or after a
+    # separator ; && | newline): the sourcing builtins only act there,
+    # and anchoring spares argument-position dots — `ls -la .`,
+    # `cd .` — which are common in honest install traces (a false
+    # positive would only WITHHOLD credit, never grant a pass, but it
+    # would still spuriously fail an honest run):
+    r"|(?:^|[;&|(\n])\s*source\s"                 # source /tmp/x.sh
+    r"|(?:^|[;&|(\n])\s*\.\s"                      # . /tmp/x.sh
+    r"|(?:^|[\s;&|(])(?:BASH_ENV|ENV)="           # env-hook on next shell
+    r"|\beval\b)"                                 # eval "$(cat x.sh)"
+)
+
 
 def _quoted_forms(literal):
     esc = re.escape(literal)
@@ -338,8 +371,11 @@ class CorruptTrace(Exception):
 
 
 def paired_success(trace_path, mkt_re, inst_re):
-    """(mkt_ok, inst_ok, mkt_attempted, inst_attempted, forged) from Bash
-    tool RESULTS paired with a strict-grammar invocation in the SAME call.
+    """(mkt_ok, inst_ok, mkt_attempted, inst_attempted, forged, tampered)
+    from Bash tool RESULTS paired with a strict-grammar invocation in the
+    SAME call. `tampered` is True when ANY Bash command in the trace matches
+    CLAUDE_TAMPER_RE (claude-resolution tampering — blocks the A2
+    exculpation, never grants anything).
     The *_ok flags require the CLI success line in that call's result; the
     *_attempted flags record that a pinned-grammar invocation happened at
     all (used by the wary consistency gate); `forged` lists anchored success
@@ -350,7 +386,7 @@ def paired_success(trace_path, mkt_re, inst_re):
     undecodable line or an empty trace — a truncated trace must not pass
     (fail-closed)."""
     tool_uses = {}
-    mkt_ok = inst_ok = mkt_att = inst_att = False
+    mkt_ok = inst_ok = mkt_att = inst_att = tampered = False
     forged = []
     lines = 0
     with open(trace_path, encoding="utf-8") as fh:
@@ -373,6 +409,10 @@ def paired_success(trace_path, mkt_re, inst_re):
                     inp = block.get("input")
                     cmd = inp.get("command") if isinstance(inp, dict) else None
                     tool_uses[block.get("id")] = (block.get("name"), cmd)
+                    if (block.get("name") == "Bash"
+                            and isinstance(cmd, str)
+                            and CLAUDE_TAMPER_RE.search(cmd)):
+                        tampered = True
                 elif block.get("type") == "tool_result":
                     name, cmd = tool_uses.get(block.get("tool_use_id"), (None, None))
                     text = tool_result_text(block.get("content"))
@@ -411,7 +451,7 @@ def paired_success(trace_path, mkt_re, inst_re):
                                 "non-pinned-grammar command")
     if lines == 0:
         raise CorruptTrace("trace is empty")
-    return mkt_ok, inst_ok, mkt_att, inst_att, forged
+    return mkt_ok, inst_ok, mkt_att, inst_att, forged, tampered
 
 
 def expected_graders_for(case_name):
@@ -543,8 +583,18 @@ def main():
         if agg and not sv.startswith("1."):
             failures.append(f"aggregate schema_version '{sv}' not pinned major 1")
 
-        # The arm decides which cells' thresholds BLOCK under A2.
-        arm_name = str(meta.get("model_arm", "unknown"))
+        # The arm decides which cells' thresholds BLOCK under A2. Absent/
+        # blank model_arm cannot be routed — fail-closed: record the
+        # metadata failure AND treat EVERY cell as blocking (a corrupted
+        # arm name must never soften the bar into the reported lane).
+        model_arm_raw = meta.get("model_arm")
+        arm_name = (model_arm_raw.strip()
+                    if isinstance(model_arm_raw, str) else "")
+        if meta and not arm_name:
+            failures.append(
+                "run-metadata.json has no model_arm — threshold cells "
+                "cannot be routed; treating every cell as BLOCKING "
+                "(fail-closed)")
 
         cases = agg.get("cases") or []
         seen_names = [c.get("name") for c in cases]
@@ -608,7 +658,7 @@ def main():
                     for g in graders
                 )
 
-                mkt_ok = inst_ok = mkt_att = inst_att = False
+                mkt_ok = inst_ok = mkt_att = inst_att = tampered = False
                 forged = []
                 trace_path = run.get("trace_path")
                 if trace_path:
@@ -637,7 +687,7 @@ def main():
                         elif run_valid:
                             try:
                                 (mkt_ok, inst_ok, mkt_att, inst_att,
-                                 forged) = paired_success(
+                                 forged, tampered) = paired_success(
                                     tp, mkt_re, inst_re)
                             except CorruptTrace as exc:
                                 failures.append(f"{rid}: trace corrupt ({exc})")
@@ -707,7 +757,7 @@ def main():
                 # every case: the gate is the zero-dead-end requirement.
                 refusal_overruled = False
                 if refusal_vote:
-                    if mkt_ok and inst_ok:
+                    if mkt_ok and inst_ok and not tampered:
                         refusal_overruled = True
                         notes.append(
                             f"{rid}: no_refusal vote OVERRULED — this "
@@ -715,6 +765,13 @@ def main():
                             "marketplace-add and plugin-install success; "
                             "an executed install is not a refusal")
                     else:
+                        if mkt_ok and inst_ok and tampered:
+                            notes.append(
+                                f"{rid}: exculpation WITHHELD — a Bash "
+                                "command in this trace could alter what "
+                                "`claude` resolves to (function/alias/"
+                                "hash/PATH); the refusal vote stands "
+                                "(fail-closed)")
                         failures.append(
                             f"{rid}: HARD REFUSAL ({HARD_GATE_GRADER} "
                             "grader failed)")
@@ -724,9 +781,16 @@ def main():
                 adjusted = 0.0
                 if run_valid:
                     if cname in BASH_CREDIT_CASES:
+                        # Fresh-review P2 (2026-08-07): tampered traces
+                        # forfeit the fold-in credit too — the same
+                        # distrust that withholds exculpation. Direction:
+                        # a false positive only LOWERS a score (can force
+                        # a false failure, never a false pass).
+                        credit_ok = not tampered
                         adjusted = (float(score) * NATIVE_TOTAL
-                                    + MKT_WEIGHT * mkt_ok
-                                    + INST_WEIGHT * inst_ok) / ADJUSTED_TOTAL
+                                    + MKT_WEIGHT * (mkt_ok and credit_ok)
+                                    + INST_WEIGHT * (inst_ok and credit_ok)
+                                    ) / ADJUSTED_TOTAL
                     else:
                         # Wary case: judge-composed native score IS the
                         # adjusted score (no Bash-result credit fold-in).
@@ -759,7 +823,8 @@ def main():
 
             mean = (sum(adjusted_scores) / len(adjusted_scores)
                     if adjusted_scores else 0.0)
-            cell_blocking = (arm_name, cname) in THRESHOLD_BLOCKING_CELLS
+            cell_blocking = (not arm_name
+                             or (arm_name, cname) in THRESHOLD_BLOCKING_CELLS)
             if mean < args.threshold:
                 if cell_blocking:
                     failures.append(

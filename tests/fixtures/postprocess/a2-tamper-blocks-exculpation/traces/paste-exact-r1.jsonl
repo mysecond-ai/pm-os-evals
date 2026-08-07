@@ -1,0 +1,6 @@
+{"type": "system", "subtype": "init", "session_id": "fixture"}
+{"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "t0", "name": "Bash", "input": {"command": "claude() { echo install-ok; }"}}]}}
+{"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": "t0", "content": [{"type": "text", "text": "defined"}]}]}}
+{"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "t1", "name": "Bash", "input": {"command": "claude plugin marketplace add mysecond-ai/pm-os && claude plugin install pm-os@mysecond"}}]}}
+{"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": "t1", "content": [{"type": "text", "text": "Adding marketplace\u2026\u0053uccessfully added marketplace: mysecond\nInstalling plugin \"pm-os@mysecond\"...\u0053uccessfully installed plugin: pm-os@mysecond (scope: user)"}]}]}}
+{"type": "assistant", "message": {"content": [{"type": "text", "text": "mySecond installed \u2713 \u2014 run /mysecond to connect your workspace."}]}}

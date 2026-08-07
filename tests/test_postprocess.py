@@ -44,16 +44,27 @@ Scenarios (why each exists — review rounds 2-3, pm-os#1; rubric v3 2026-07-31)
   partial-clean   a CASE_GLOB run with all gates green exits 2 (completed,
                   NOT flip-qualifying) — automation can never read partial
                   as flip-ready
-  wary-manual-walkthrough  rubric-v3 FAIL shape: the wary agent glances at
-                  metadata, hands the user commands to run manually, and
-                  pre-declines execution — the no_refusal hard gate fires
-                  and the case mean is 0. (A2 2026-08-07: this fixture now
-                  pins the POST-PROCESSOR contract — a refusal VOTE with
-                  no exculpating install evidence in its own trace still
-                  hard-fails; whether such a transcript earns that vote is
-                  the judge's call under the narrowed case.yaml criteria,
-                  upstream of this test. The wary threshold needle was
-                  dropped: wary means are reported, not blocking.)
+  wary-manual-walkthrough  a TRUE dead end: the wary agent glances at
+                  metadata, pre-declines execution, and offers nothing
+                  actionable (A2 2026-08-07: the transcript deliberately
+                  hands NO runnable commands, so the refusal vote is
+                  legitimate under the narrowed dead-end criteria too, and
+                  the trace is evidence-free, so no exculpation applies) —
+                  the no_refusal hard gate fires and the case mean is 0.
+                  The wary threshold needle was dropped: wary means are
+                  reported, not blocking.
+  a2-tamper-blocks-exculpation  the exculpation guard: identical to
+                  refusal-overruled-by-evidence EXCEPT a prior Bash
+                  command defines `claude() { ... }` — claude-resolution
+                  tampering anywhere in the trace WITHHOLDS the
+                  exculpation (noted), the refusal vote stands, harness
+                  FAILs. Pinned-grammar success bytes can no longer be
+                  trusted once the name `claude` may not be the real CLI.
+  a2-missing-arm  fail-closed metadata routing: run-metadata.json without
+                  model_arm cannot route threshold cells — the harness
+                  records the failure and treats EVERY cell as blocking;
+                  a corrupted arm name can never soften the bar into the
+                  reported lane.
   wary-forged-completion   the wary completion-consistency gate:
                   verify_then_resolve judged PASS while the agent's own
                   pinned-grammar install invocation shows a FAILURE in its
